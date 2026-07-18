@@ -1,0 +1,543 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "Bold": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "غامق"
+          }
+        }
+      }
+    },
+    "Bulleted List": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "قائمة نقطية"
+          }
+        }
+      }
+    },
+    "Characters: %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الأحرف: %lld"
+          }
+        }
+      }
+    },
+    "Choose a Markdown file from the sidebar.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اختر ملف ماركداون من الشريط الجانبي."
+          }
+        }
+      }
+    },
+    "Code Block": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "كتلة برمجية"
+          }
+        }
+      }
+    },
+    "Editor": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "المحرر"
+          }
+        }
+      }
+    },
+    "Exit Focus Mode": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إنهاء وضع التركيز"
+          }
+        }
+      }
+    },
+    "Export as HTML…": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تصدير HTML…"
+          }
+        }
+      }
+    },
+    "Export as PDF…": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تصدير PDF…"
+          }
+        }
+      }
+    },
+    "Focus Mode": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "وضع التركيز"
+          }
+        }
+      }
+    },
+    "Font Size": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "حجم الخط"
+          }
+        }
+      }
+    },
+    "Format": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تنسيق"
+          }
+        }
+      }
+    },
+    "General": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "عام"
+          }
+        }
+      }
+    },
+    "Heading 1": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "عنوان 1"
+          }
+        }
+      }
+    },
+    "Heading 2": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "عنوان 2"
+          }
+        }
+      }
+    },
+    "Heading 3": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "عنوان 3"
+          }
+        }
+      }
+    },
+    "Heading 4": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "عنوان 4"
+          }
+        }
+      }
+    },
+    "Headings": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "عناوين"
+          }
+        }
+      }
+    },
+    "Hide Format Bar": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إخفاء شريط التنسيق"
+          }
+        }
+      }
+    },
+    "Hide Preview": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إخفاء المعاينة"
+          }
+        }
+      }
+    },
+    "Hide Sidebar": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إخفاء الشريط الجانبي"
+          }
+        }
+      }
+    },
+    "Horizontal Rule": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فاصل أفقي"
+          }
+        }
+      }
+    },
+    "Image": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "صورة"
+          }
+        }
+      }
+    },
+    "Inline Code": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "كود مضمّن"
+          }
+        }
+      }
+    },
+    "Italic": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مائل"
+          }
+        }
+      }
+    },
+    "Language": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اللغة"
+          }
+        }
+      }
+    },
+    "Language changes fully apply after relaunching Sahifa.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تُطبَّق تغييرات اللغة بالكامل بعد إعادة تشغيل «صحيفة»."
+          }
+        }
+      }
+    },
+    "Line Spacing": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تباعد الأسطر"
+          }
+        }
+      }
+    },
+    "Link": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "رابط"
+          }
+        }
+      }
+    },
+    "New File": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ملف جديد"
+          }
+        }
+      }
+    },
+    "New Tab": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "علامة تبويب جديدة"
+          }
+        }
+      }
+    },
+    "New Window": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "نافذة جديدة"
+          }
+        }
+      }
+    },
+    "No file selected": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لم يتم اختيار ملف"
+          }
+        }
+      }
+    },
+    "No folder open": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لا يوجد مجلد مفتوح"
+          }
+        }
+      }
+    },
+    "Numbered List": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "قائمة مرقّمة"
+          }
+        }
+      }
+    },
+    "Open File…": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فتح ملف…"
+          }
+        }
+      }
+    },
+    "Open Folder…": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فتح مجلد…"
+          }
+        }
+      }
+    },
+    "Open a folder of Markdown files to begin.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "افتح مجلدًا يحتوي على ملفات ماركداون للبدء."
+          }
+        }
+      }
+    },
+    "Open a folder or Markdown file": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "افتح مجلدًا أو ملف ماركداون"
+          }
+        }
+      }
+    },
+    "Open a folder or a Markdown file to begin.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "افتح مجلدًا أو ملف ماركداون للبدء."
+          }
+        }
+      }
+    },
+    "Open…": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فتح…"
+          }
+        }
+      }
+    },
+    "Quote": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اقتباس"
+          }
+        }
+      }
+    },
+    "Save": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "حفظ"
+          }
+        }
+      }
+    },
+    "Show Format Bar": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إظهار شريط التنسيق"
+          }
+        }
+      }
+    },
+    "Show Preview": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إظهار المعاينة"
+          }
+        }
+      }
+    },
+    "Show Sidebar": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إظهار الشريط الجانبي"
+          }
+        }
+      }
+    },
+    "Strikethrough": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "يتوسطه خط"
+          }
+        }
+      }
+    },
+    "System": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "النظام"
+          }
+        }
+      }
+    },
+    "Table": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "جدول"
+          }
+        }
+      }
+    },
+    "Toggle Sidebar": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إظهار/إخفاء الشريط الجانبي"
+          }
+        }
+      }
+    },
+    "Untitled": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "بدون عنوان"
+          }
+        }
+      }
+    },
+    "Words: %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الكلمات: %lld"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

@@ -1,0 +1,24 @@
+# Build output
+build/
+dist/
+DerivedData/
+*.xcarchive
+
+# Xcode user state
+xcuserdata/
+*.xcuserstate
+*.xcuserdatad
+*.xcscmblueprint
+
+# macOS
+.DS_Store
+._*
+
+# Claude Code local config
+.claude/
+
+# Brand kit (private). Keep only the bundled IBM Plex fonts, which the build
+# needs (referenced by the project as Resources/fonts) and are redistributable
+# under the SIL Open Font License.
+Brand/*
+!Brand/fonts/
