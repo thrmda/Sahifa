@@ -37,14 +37,27 @@ private struct GitHubAccountRow: View {
         case .connecting:
             Text("Checking…")
         case .connected(let login):
-            if let expiry = account.expiry {
-                Text("Connected as \(login) · expires \(expiry.formatted(date: .abbreviated, time: .omitted))")
-            } else {
-                Text("Connected as \(login)")
+            // The name is optional — the credential is what decides whether an
+            // account is connected — so each combination gets its own sentence
+            // rather than interpolating an optional into one.
+            switch (login, account.expiry) {
+            case (.some(let name), .some(let expiry)):
+                Text("Connected as \(name) · expires \(expiry.formatted(date: .abbreviated, time: .omitted))")
+            case (.some(let name), .none):
+                Text("Connected as \(name)")
+            case (.none, .some(let expiry)):
+                Text("Connected · expires \(expiry.formatted(date: .abbreviated, time: .omitted))")
+            case (.none, .none):
+                Text("Connected")
             }
         case .expired(let login):
-            Text("\(login ?? "The token") no longer has access. Reconnect to keep saving.")
-                .foregroundStyle(Color.gold)
+            if let login {
+                Text("\(login) no longer has access. Reconnect to keep saving.")
+                    .foregroundStyle(Color.gold)
+            } else {
+                Text("The token no longer has access. Reconnect to keep saving.")
+                    .foregroundStyle(Color.gold)
+            }
         case .failed(let reason):
             Text(verbatim: reason).foregroundStyle(Color.gold)
         }

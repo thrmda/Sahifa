@@ -173,6 +173,26 @@
         }
       }
     },
+    "Connected": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "متصل"
+          }
+        }
+      }
+    },
+    "Connected · expires %@": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "متصل · تنتهي صلاحيته في %@"
+          }
+        }
+      }
+    },
     "Connect…": {
       "localizations": {
         "ar": {
@@ -902,6 +922,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "يُحفظ الرمز في سلسلة مفاتيح الماك."
+          }
+        }
+      }
+    },
+    "The token no longer has access. Reconnect to keep saving.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لم يعد الرمز يملك صلاحية الوصول. أعد الاتصال لمتابعة الحفظ."
           }
         }
       }
