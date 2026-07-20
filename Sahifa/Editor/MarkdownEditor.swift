@@ -9,6 +9,7 @@ struct MarkdownEditor: NSViewRepresentable {
     var fontSize: Double
     var lineSpacing: Double
     var focusMode: Bool = false
+    var isEditable: Bool = true
     var scrollSync: ScrollSync? = nil
 
     func makeCoordinator() -> Coordinator {
@@ -37,6 +38,7 @@ struct MarkdownEditor: NSViewRepresentable {
 
         textView.isRichText = false
         textView.allowsUndo = true
+        textView.isEditable = isEditable
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false

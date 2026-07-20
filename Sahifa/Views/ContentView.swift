@@ -158,6 +158,7 @@ private struct EditorPreviewSplit: View {
     @ObservedObject var document: DocumentModel
     let fontSize: Double
     let lineSpacing: Double
+    let isEditable: Bool
     let showPreview: Bool
 
     @AppStorage("previewFraction") private var previewFraction = 0.45
@@ -179,6 +180,7 @@ private struct EditorPreviewSplit: View {
             HStack(spacing: 0) {
                 MarkdownEditor(text: $document.text, fontSize: fontSize,
                                lineSpacing: lineSpacing, focusMode: focusMode,
+                               isEditable: isEditable,
                                scrollSync: showPreview ? scrollSync : nil)
                     .id(document.id)
                     .frame(width: editorWidth)
@@ -315,6 +317,46 @@ private func enterFullScreenWhenReady(attemptsLeft: Int) {
     }
 }
 
+/// Waiting for, or failing to get, a document that isn't on this Mac.
+private struct DocumentPlaceholder: View {
+    let message: Text
+    let retry: (() -> Void)?
+
+    var body: some View {
+        VStack(spacing: 10) {
+            message
+                .font(.custom("IBMPlexSans", size: 13))
+                .foregroundStyle(Color.slate)
+                .multilineTextAlignment(.center)
+            if let retry {
+                Button("Try Again", action: retry)
+            }
+        }
+        .padding(32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.paper)
+    }
+}
+
+/// Says plainly that edits won't be saved, rather than letting someone type
+/// into a document that silently discards their work.
+private struct ReadOnlyBanner: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "eye")
+                .foregroundStyle(Color.slate)
+                .accessibilityHidden(true)
+            Text("Read-only. Saving to this source isn't supported yet.")
+            Spacer(minLength: 0)
+        }
+        .font(.custom("IBMPlexSans", size: 12))
+        .foregroundStyle(Color.slate)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color.sand)
+    }
+}
+
 /// Shown when a file changed on disk while the editor held unsaved edits.
 /// Deliberately a banner rather than an alert: autosave is already paused, so
 /// nothing is at risk while the user finishes a thought, and a modal here
@@ -401,13 +443,28 @@ struct DocumentEditorView: View {
                 ConflictBanner(document: document)
                 Divider()
             }
+            if document.isReadOnly, document.loadState == .ready {
+                ReadOnlyBanner()
+                Divider()
+            }
             // Not HSplitView: it keeps the divider at an absolute offset, so
             // shrinking the window clips panes/crushes the sidebar and
             // entering full screen dumps all new width into one pane. This
             // split stores the *fraction* instead, which scales with any
             // resize and mirrors correctly in RTL chrome.
-            EditorPreviewSplit(document: document, fontSize: fontSize,
-                               lineSpacing: lineSpacing, showPreview: windowState.showPreview)
+            switch document.loadState {
+            case .loading:
+                DocumentPlaceholder(message: Text("Loading…"), retry: nil)
+            case .failed(let reason):
+                DocumentPlaceholder(message: Text(verbatim: reason)) {
+                    document.retryLoad()
+                }
+            case .ready:
+                EditorPreviewSplit(document: document, fontSize: fontSize,
+                                   lineSpacing: lineSpacing,
+                                   isEditable: !document.isReadOnly,
+                                   showPreview: windowState.showPreview)
+            }
             Divider()
             StatusBarView(text: document.text, errorMessage: document.lastError,
                           showPreview: $windowState.showPreview)

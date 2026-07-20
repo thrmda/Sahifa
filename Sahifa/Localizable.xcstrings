@@ -1,12 +1,52 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Access was refused. Check the account or token.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تم رفض الوصول. تحقق من الحساب أو الرمز."
+          }
+        }
+      }
+    },
+    "Add": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إضافة"
+          }
+        }
+      }
+    },
     "Add Folder…": {
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
             "value": "إضافة مجلد…"
+          }
+        }
+      }
+    },
+    "Add GitHub Repository…": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إضافة مستودع GitHub…"
+          }
+        }
+      }
+    },
+    "Add a GitHub Repository": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إضافة مستودع GitHub"
           }
         }
       }
@@ -37,6 +77,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "قائمة نقطية"
+          }
+        }
+      }
+    },
+    "Cancel": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إلغاء"
           }
         }
       }
@@ -100,6 +150,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "فارغ"
+          }
+        }
+      }
+    },
+    "Enter it as owner/repository — for example apple/swift-markdown. Public repositories can be read without signing in; the files are opened read-only.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "أدخله بالصيغة المالك/المستودع — مثل apple/swift-markdown. يمكن قراءة المستودعات العامة دون تسجيل الدخول، وتُفتح الملفات للقراءة فقط."
           }
         }
       }
@@ -172,6 +232,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "عام"
+          }
+        }
+      }
+    },
+    "GitHub's request limit was reached. Try again shortly.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تم بلوغ حد الطلبات في GitHub. حاول بعد قليل."
           }
         }
       }
@@ -442,6 +512,16 @@
         }
       }
     },
+    "Not found on the server.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "غير موجود على الخادم."
+          }
+        }
+      }
+    },
     "Numbered List": {
       "localizations": {
         "ar": {
@@ -540,6 +620,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "اقتباس"
+          }
+        }
+      }
+    },
+    "Read-only repository": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مستودع للقراءة فقط"
+          }
+        }
+      }
+    },
+    "Read-only. Saving to this source isn't supported yet.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "للقراءة فقط. الحفظ في هذا المصدر غير مدعوم بعد."
           }
         }
       }
@@ -666,6 +766,16 @@
         }
       }
     },
+    "That path is not a folder.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "هذا المسار ليس مجلدًا."
+          }
+        }
+      }
+    },
     "This file changed on disk. Autosave is paused.": {
       "localizations": {
         "ar": {
@@ -686,12 +796,32 @@
         }
       }
     },
+    "This source is read-only.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "هذا المصدر للقراءة فقط."
+          }
+        }
+      }
+    },
     "Toggle Sidebar": {
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
             "value": "إظهار/إخفاء الشريط الجانبي"
+          }
+        }
+      }
+    },
+    "Try Again": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إعادة المحاولة"
           }
         }
       }

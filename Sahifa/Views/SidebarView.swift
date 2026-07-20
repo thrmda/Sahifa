@@ -84,6 +84,7 @@ struct SidebarView: View {
                 .foregroundStyle(Color.slate)
             Button("Add Folder…") { model.chooseFolder() }
             Button("Open File…") { model.chooseFile() }
+            Button("Add GitHub Repository…") { RepositoryPrompt.show(model) }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -111,6 +112,13 @@ private struct SourceDisclosure: View {
                 // Reserved status slot. Local folders only speak up when
                 // they've gone missing; a remote source will use this for
                 // syncing / offline / sign-in-needed without a relayout.
+                if source.kind == .gitHub {
+                    Image(systemName: "chevron.left.forwardslash.chevron.right")
+                        .imageScale(.small)
+                        .foregroundStyle(Color.slate)
+                        .help(Text("Read-only repository"))
+                        .accessibilityLabel(Text("Read-only repository"))
+                }
                 if source.status == .missing {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .imageScale(.small)
@@ -121,9 +129,9 @@ private struct SourceDisclosure: View {
             }
             .contextMenu {
                 Button("Remove from Sidebar") { model.removeSource(source.id) }
-                if source.kind == .localFolder {
+                if let root = source.rootURL, source.kind == .localFolder {
                     Button("Reveal in Finder") {
-                        NSWorkspace.shared.activateFileViewerSelecting([source.rootURL])
+                        NSWorkspace.shared.activateFileViewerSelecting([root])
                     }
                 }
             }
@@ -157,6 +165,18 @@ private struct NodeRows: View {
                     .foregroundStyle(Color.slate)
                     .selectionDisabled()
             }
+        } else if let failure = model.directoryErrors[parent] {
+            // A folder that can't be fetched says so and offers another go,
+            // rather than sitting on a spinner that never resolves.
+            VStack(alignment: .leading, spacing: 4) {
+                Text(verbatim: failure)
+                    .foregroundStyle(Color.gold)
+                    .lineLimit(3)
+                Button("Try Again") { model.loadChildren(of: parent, force: true) }
+                    .buttonStyle(.link)
+            }
+            .font(.custom("IBMPlexSans", size: 11))
+            .selectionDisabled()
         } else {
             Text("Loading…")
                 .font(.custom("IBMPlexSans", size: 12))
@@ -175,6 +195,9 @@ private struct NodeLabel: View {
     @FocusState private var renameFieldFocused: Bool
 
     private var isLoose: Bool { node.id.sourceID == Source.looseFilesID }
+    /// Renaming, trashing and Reveal in Finder only mean something for a file
+    /// that actually exists on this Mac.
+    private var isLocal: Bool { model.source(node.id.sourceID)?.isLocal ?? false }
     private var isRenaming: Bool { windowState.renaming == node.id }
 
     var body: some View {
@@ -208,15 +231,17 @@ private struct NodeLabel: View {
         .padding(.vertical, 2)
         .contentShape(Rectangle())
         .contextMenu {
-            if !isLoose {
+            if !isLoose && isLocal {
                 Button("Rename…") { beginRename() }
             }
-            Button("Reveal in Finder") {
-                if let url = model.url(for: node.id) {
-                    NSWorkspace.shared.activateFileViewerSelecting([url])
+            if isLocal {
+                Button("Reveal in Finder") {
+                    if let url = model.url(for: node.id) {
+                        NSWorkspace.shared.activateFileViewerSelecting([url])
+                    }
                 }
             }
-            if node.isDirectory {
+            if node.isDirectory && isLocal {
                 Button("New File Here") {
                     if let id = model.newFile(in: node.id) {
                         windowState.expanded.insert(node.id)
@@ -224,7 +249,7 @@ private struct NodeLabel: View {
                     }
                 }
             }
-            Divider()
+            if isLocal { Divider() }
             if isLoose {
                 // Its folder isn't in the sidebar, so "remove" here means stop
                 // listing it — deleting the file is the separate, louder verb.
@@ -232,7 +257,9 @@ private struct NodeLabel: View {
                     model.removeFromOpenedFiles(node.id)
                 }
             }
-            Button("Move to Trash") { model.moveToTrash(node.id) }
+            if isLocal {
+                Button("Move to Trash") { model.moveToTrash(node.id) }
+            }
         }
     }
 

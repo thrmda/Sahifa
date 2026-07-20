@@ -59,6 +59,16 @@ struct Source: Identifiable, Hashable {
         /// Under the sandbox their parent folder is usually unreadable, so
         /// they genuinely have nowhere else to go.
         case looseFiles
+        /// A GitHub repository, read over the network.
+        case gitHub
+    }
+
+    /// Which repository a `.gitHub` source points at.
+    struct Repository: Hashable, Codable {
+        let owner: String
+        let name: String
+        /// nil follows the repository's default branch.
+        var branch: String?
     }
 
     enum Status: Hashable {
@@ -70,7 +80,9 @@ struct Source: Identifiable, Hashable {
     let id: UUID
     let kind: Kind
     var name: String
-    var rootURL: URL
+    /// Where a local source lives. Remote sources have no folder on this Mac.
+    var rootURL: URL?
+    var repository: Repository?
     var status: Status = .ready
 
     /// Fixed so the loose-files source keeps its identity across launches.
@@ -82,15 +94,20 @@ struct Source: Identifiable, Hashable {
                rootURL: URL(fileURLWithPath: "/"))
     }
 
+    /// Nothing outside a store should reach for a path; this exists for the
+    /// few local-only affordances (Reveal in Finder, the folder watcher).
+    var isLocal: Bool { kind == .localFolder || kind == .looseFiles }
+
     var isLooseFiles: Bool { kind == .looseFiles }
 
-    /// Resolves a document in this source to a file URL. Local-only by
-    /// definition; a remote source would fetch by `id` instead.
-    func url(for id: DocumentID) -> URL {
-        id.path.isEmpty ? rootURL : rootURL.appending(path: id.path)
+    /// Resolves a document in this source to a file URL, when there is one.
+    func url(for id: DocumentID) -> URL? {
+        guard let rootURL else { return nil }
+        return id.path.isEmpty ? rootURL : rootURL.appending(path: id.path)
     }
 
     func documentID(for url: URL) -> DocumentID? {
+        guard let rootURL else { return nil }
         let root = rootURL.standardizedFileURL.path
         let target = url.standardizedFileURL.path
         if kind == .looseFiles {

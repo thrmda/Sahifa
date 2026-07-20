@@ -21,14 +21,36 @@ enum DocumentStoreError: Error {
     case versionConflict
 }
 
-/// Reads and writes documents in one local folder.
+/// Where a source's documents come from.
 ///
-/// Deliberately a concrete type rather than a protocol with one conformer:
-/// the shape a remote store needs (async, cancellable, retrying, offline) is
-/// better extracted from two real implementations than guessed from one. What
-/// matters now is that `DocumentModel` no longer touches the file system, so
-/// swapping in another store means changing this seam and not the document.
-struct LocalFileStore: Sendable {
+/// Extracted from two real implementations rather than guessed from one — the
+/// split between `readImmediately` and `read` is the whole point. A local file
+/// genuinely is available at once, and pretending otherwise would flash an
+/// empty editor on every keystroke-fast document switch; anything fetched has
+/// to be awaited. Callers take the fast path when there is one and show a
+/// loading state when there isn't.
+protocol DocumentStore: Sendable {
+    /// True when documents can be browsed but not saved. Read-only is a real
+    /// state, not a failure: a repository is readable long before writing to
+    /// it has been set up.
+    var isReadOnly: Bool { get }
+
+    /// Contents available without waiting, or nil if the caller must `read`.
+    func readImmediately(_ id: DocumentID) -> DocumentContents?
+    func read(_ id: DocumentID) async throws -> DocumentContents
+    func children(of id: DocumentID) async throws -> [Node]
+
+    /// The version currently stored, when that can be answered without
+    /// waiting. Remote stores return nil and answer during `read` instead.
+    func versionImmediately(of id: DocumentID) -> VersionToken?
+
+    @discardableResult
+    func write(_ text: String, to id: DocumentID,
+               expecting: VersionToken?) throws -> VersionToken?
+}
+
+/// Reads and writes documents in one local folder.
+struct LocalFileStore: DocumentStore {
     let sourceID: UUID
     let root: URL
 
@@ -49,10 +71,46 @@ struct LocalFileStore: Sendable {
         return VersionToken(raw: "\(modified.timeIntervalSince1970):\(size)")
     }
 
-    func read(_ id: DocumentID) -> DocumentContents {
+    var isReadOnly: Bool { false }
+
+    /// A local file is genuinely available at once, so both entry points
+    /// resolve to the same synchronous read.
+    func readImmediately(_ id: DocumentID) -> DocumentContents? {
         let text = (try? String(contentsOf: url(for: id), encoding: .utf8)) ?? ""
         return DocumentContents(text: text, version: version(of: id))
     }
+
+    func read(_ id: DocumentID) async throws -> DocumentContents {
+        readImmediately(id) ?? DocumentContents(text: "", version: nil)
+    }
+
+    func versionImmediately(of id: DocumentID) -> VersionToken? { version(of: id) }
+
+    /// Folders and Markdown files in one directory, folders first, each group
+    /// ordered the way Finder orders names.
+    func childrenImmediately(of id: DocumentID) -> [Node] {
+        let contents = (try? FileManager.default.contentsOfDirectory(
+            at: url(for: id),
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles])) ?? []
+        var nodes: [Node] = []
+        for url in contents {
+            let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?
+                .isDirectory ?? url.hasDirectoryPath
+            guard isDirectory || AppModel.markdownExtensions
+                    .contains(url.pathExtension.lowercased()) else { continue }
+            nodes.append(Node(id: id.appending(url.lastPathComponent),
+                              name: url.lastPathComponent,
+                              isDirectory: isDirectory))
+        }
+        return nodes.sorted {
+            $0.isDirectory == $1.isDirectory
+                ? $0.name.localizedStandardCompare($1.name) == .orderedAscending
+                : $0.isDirectory
+        }
+    }
+
+    func children(of id: DocumentID) async throws -> [Node] { childrenImmediately(of: id) }
 
     /// Writes only when the document is still at `expecting`, so a file edited
     /// by another program is never silently overwritten. A document that has

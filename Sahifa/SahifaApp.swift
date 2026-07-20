@@ -77,6 +77,7 @@ struct SahifaCommands: Commands {
                 .keyboardShortcut("o", modifiers: .command)
             Button("Add Folder…") { model.chooseFolder() }
                 .keyboardShortcut("o", modifiers: [.command, .shift])
+            Button("Add GitHub Repository…") { RepositoryPrompt.show(model) }
             Menu("Open Recent") {
                 ForEach(model.recentFolders) { item in
                     Button(recentLabel(item, among: model.recentFolders)) {

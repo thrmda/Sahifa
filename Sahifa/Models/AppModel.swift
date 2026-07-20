@@ -29,6 +29,12 @@ final class AppModel: ObservableObject {
     /// Documents opened on their own, listed under the loose-files source.
     @Published private(set) var looseFiles: [URL] = []
 
+    /// Folders currently being fetched, and folders that failed. Local folders
+    /// are read instantly and never appear here; a repository has to be waited
+    /// on, and can refuse.
+    @Published private(set) var loadingDirectories: Set<DocumentID> = []
+    @Published private(set) var directoryErrors: [DocumentID: String] = [:]
+
     /// One DocumentModel per document, shared by every window showing it.
     private var documentCache: [DocumentID: DocumentModel] = [:]
 
@@ -158,7 +164,7 @@ final class AppModel: ObservableObject {
         saveBookmark(url)
         // Already added: refresh it rather than listing the same folder twice.
         if let existing = sources.first(where: {
-            $0.kind == .localFolder && $0.rootURL.standardizedFileURL == url.standardizedFileURL
+            $0.kind == .localFolder && $0.rootURL?.standardizedFileURL == url.standardizedFileURL
         }) {
             loadChildren(of: DocumentID(sourceID: existing.id, path: ""), force: true)
             return existing
@@ -245,25 +251,56 @@ final class AppModel: ObservableObject {
             childrenByDirectory[id] = looseFileNodes()
             return
         }
-        let directory = source.url(for: id)
-        let contents = (try? FileManager.default.contentsOfDirectory(
-            at: directory,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles])) ?? []
-        var nodes: [Node] = []
-        for url in contents {
-            let isDirectory = Self.isDirectory(url)
-            guard isDirectory || Self.isMarkdown(url) else { continue }
-            nodes.append(Node(id: id.appending(url.lastPathComponent),
-                              name: url.lastPathComponent,
-                              isDirectory: isDirectory))
+        if source.kind == .gitHub {
+            fetchChildren(of: id)
+            return
         }
-        // Folders first, then files; each alphabetical the way Finder sorts.
-        childrenByDirectory[id] = nodes.sorted {
-            $0.isDirectory == $1.isDirectory
-                ? $0.name.localizedStandardCompare($1.name) == .orderedAscending
-                : $0.isDirectory
+        guard let store = store(for: id.sourceID) as? LocalFileStore else { return }
+        childrenByDirectory[id] = store.childrenImmediately(of: id)
+    }
+
+    /// Fetches a remote folder. Only one request per folder is in flight, and
+    /// the result replaces any previous error for that folder.
+    private func fetchChildren(of id: DocumentID) {
+        guard !loadingDirectories.contains(id), let store = store(for: id.sourceID) else { return }
+        loadingDirectories.insert(id)
+        directoryErrors[id] = nil
+        Task { [weak self] in
+            do {
+                let nodes = try await store.children(of: id)
+                guard let self else { return }
+                self.childrenByDirectory[id] = nodes
+                self.loadingDirectories.remove(id)
+            } catch {
+                guard let self else { return }
+                self.directoryErrors[id] = error.localizedDescription
+                self.loadingDirectories.remove(id)
+            }
         }
+    }
+
+    /// Adds a GitHub repository as a source. Read-only for now, and read
+    /// anonymously, which is enough for public repositories.
+    func addRepository(owner: String, name: String, branch: String?) {
+        let trimmedOwner = owner.trimmingCharacters(in: .whitespaces)
+        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmedOwner.isEmpty, !trimmedName.isEmpty else { return }
+        if let existing = sources.first(where: {
+            $0.repository?.owner == trimmedOwner && $0.repository?.name == trimmedName
+        }) {
+            loadChildren(of: DocumentID(sourceID: existing.id, path: ""), force: true)
+            return
+        }
+        let source = Source(id: UUID(), kind: .gitHub,
+                            name: "\(trimmedOwner)/\(trimmedName)",
+                            rootURL: nil,
+                            repository: Source.Repository(owner: trimmedOwner,
+                                                          name: trimmedName,
+                                                          branch: branch))
+        sources.append(source)
+        persistSources()
+        loadChildren(of: DocumentID(sourceID: source.id, path: ""), force: true)
+        sourceAdded.send(source)
     }
 
     private func looseFileNodes() -> [Node] {
@@ -290,10 +327,14 @@ final class AppModel: ObservableObject {
     /// source still exists.
     func refreshLoadedDirectories() {
         for index in sources.indices where sources[index].kind == .localFolder {
-            let exists = FileManager.default.fileExists(atPath: sources[index].rootURL.path)
+            let path = sources[index].rootURL?.path
+            let exists = path.map { FileManager.default.fileExists(atPath: $0) } ?? false
             sources[index].status = exists ? .ready : .missing
         }
-        for id in childrenByDirectory.keys where id.sourceID != Source.looseFilesID {
+        // Local folders only: re-reading every remote folder on each app
+        // switch would burn requests for no reason.
+        for id in childrenByDirectory.keys
+        where source(id.sourceID)?.kind == .localFolder {
             loadChildren(of: id, force: true)
         }
         refreshLooseFiles()
@@ -309,11 +350,22 @@ final class AppModel: ObservableObject {
         return document
     }
 
-    /// How documents in a source are reached. One per source, so the day a
-    /// source isn't a local folder only this needs to change.
-    private func store(for sourceID: UUID) -> LocalFileStore? {
+    /// How documents in a source are reached. Everything above this line is
+    /// source-agnostic; this is the one place that knows the difference.
+    func store(for sourceID: UUID) -> (any DocumentStore)? {
         guard let source = source(sourceID) else { return nil }
-        return LocalFileStore(sourceID: sourceID, root: source.rootURL)
+        switch source.kind {
+        case .localFolder, .looseFiles:
+            guard let root = source.rootURL else { return nil }
+            return LocalFileStore(sourceID: sourceID, root: root)
+        case .gitHub:
+            guard let repository = source.repository else { return nil }
+            return GitHubStore(sourceID: sourceID,
+                               owner: repository.owner,
+                               repository: repository.name,
+                               branch: repository.branch,
+                               token: nil)
+        }
     }
 
     /// Whether a document still resolves to something on disk — the sidebar
@@ -346,9 +398,9 @@ final class AppModel: ObservableObject {
     @discardableResult
     func newFile(in directory: DocumentID?) -> DocumentID? {
         guard let target = directory ?? firstWritableDirectory(),
-              let source = source(target.sourceID), source.kind == .localFolder
+              let source = source(target.sourceID), source.kind == .localFolder,
+              let folder = source.url(for: target)
         else { return nil }
-        let folder = source.url(for: target)
         let base = String(localized: "Untitled")
         var name = "\(base).md"
         var counter = 2
@@ -398,14 +450,15 @@ final class AppModel: ObservableObject {
               let parent = id.parent
         else { return nil }
 
-        let oldURL = source.url(for: id)
+        guard let oldURL = source.url(for: id) else { return nil }
         var name = trimmed
         if (name as NSString).pathExtension.isEmpty {
             let existing = (id.path as NSString).pathExtension
             if !existing.isEmpty { name += ".\(existing)" }
         }
         guard name != id.name else { return nil }
-        let newURL = source.url(for: parent).appending(path: name)
+        guard let parentURL = source.url(for: parent) else { return nil }
+        let newURL = parentURL.appending(path: name)
         guard !FileManager.default.fileExists(atPath: newURL.path) else { return nil }
 
         // Flush pending edits before the file moves out from under them.
@@ -464,19 +517,20 @@ final class AppModel: ObservableObject {
     /// subfolder by Finder, a sync client or a git checkout appears straight
     /// away rather than on the next reactivation.
     private func startMonitor(for source: Source) {
-        guard source.kind == .localFolder else { return }
+        guard source.kind == .localFolder, let root = source.rootURL else { return }
         let id = source.id
         monitors[id]?.stop()
         monitors[id] = DirectoryWatcher(
-            root: source.rootURL,
+            root: root,
             onChange: { [weak self] directories in
                 self?.directoriesChanged(directories, in: id)
             },
             onRootLost: { [weak self] in
                 guard let self, let index = self.sources.firstIndex(where: { $0.id == id })
                 else { return }
+                let path = self.sources[index].rootURL?.path
                 self.sources[index].status =
-                    FileManager.default.fileExists(atPath: self.sources[index].rootURL.path)
+                    (path.map { FileManager.default.fileExists(atPath: $0) } ?? false)
                     ? .ready : .missing
             })
     }
@@ -511,17 +565,27 @@ final class AppModel: ObservableObject {
     private struct SourceRecord: Codable {
         let id: UUID
         let name: String
-        let bookmark: Data
+        /// Local folders only; a repository is named, not bookmarked.
+        var bookmark: Data?
+        var repository: Source.Repository?
     }
 
     private func persistSources() {
         let records: [SourceRecord] = sources.compactMap { source in
-            guard source.kind == .localFolder,
-                  let bookmark = try? source.rootURL.bookmarkData(
-                    options: .withSecurityScope,
-                    includingResourceValuesForKeys: nil, relativeTo: nil)
-            else { return nil }
-            return SourceRecord(id: source.id, name: source.name, bookmark: bookmark)
+            switch source.kind {
+            case .localFolder:
+                guard let bookmark = try? source.rootURL?.bookmarkData(
+                        options: .withSecurityScope,
+                        includingResourceValuesForKeys: nil, relativeTo: nil)
+                else { return nil }
+                return SourceRecord(id: source.id, name: source.name, bookmark: bookmark)
+            case .gitHub:
+                guard let repository = source.repository else { return nil }
+                return SourceRecord(id: source.id, name: source.name,
+                                    bookmark: nil, repository: repository)
+            case .looseFiles:
+                return nil
+            }
         }
         guard let data = try? JSONEncoder().encode(records) else { return }
         UserDefaults.standard.set(data, forKey: Self.sourcesKey)
@@ -539,7 +603,14 @@ final class AppModel: ObservableObject {
         if let data = UserDefaults.standard.data(forKey: Self.sourcesKey),
            let records = try? JSONDecoder().decode([SourceRecord].self, from: data) {
             for record in records {
-                guard let url = resolveBookmark(record.bookmark) else { continue }
+                if let repository = record.repository {
+                    sources.append(Source(id: record.id, kind: .gitHub,
+                                          name: record.name, rootURL: nil,
+                                          repository: repository))
+                    continue
+                }
+                guard let bookmark = record.bookmark,
+                      let url = resolveBookmark(bookmark) else { continue }
                 var source = Source(id: record.id, kind: .localFolder,
                                     name: record.name, rootURL: url)
                 source.status = FileManager.default.fileExists(atPath: url.path)

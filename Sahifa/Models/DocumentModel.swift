@@ -20,7 +20,21 @@ final class DocumentModel: ObservableObject, Identifiable {
     /// Autosave stays paused until `resolveKeepingMine`/`resolveUsingDisk`.
     @Published private(set) var hasConflict = false
 
-    private let store: LocalFileStore
+    /// Loading is a real state now that a document can come over a network.
+    /// A local file skips it entirely — its contents are available at once,
+    /// and routing them through an await would flash an empty editor on every
+    /// document switch.
+    enum LoadState: Equatable {
+        case loading
+        case ready
+        case failed(String)
+    }
+    @Published private(set) var loadState: LoadState
+
+    /// Browsable but not savable — a repository before writing is set up.
+    var isReadOnly: Bool { store.isReadOnly }
+
+    private let store: any DocumentStore
     private var savedText: String
     private var version: VersionToken?
     private var cancellable: AnyCancellable?
@@ -30,13 +44,21 @@ final class DocumentModel: ObservableObject, Identifiable {
     /// Suggested filename (sans extension) for exports.
     var exportName: String { (id.name as NSString).deletingPathExtension }
 
-    init(id: DocumentID, store: LocalFileStore) {
+    init(id: DocumentID, store: any DocumentStore) {
         self.id = id
         self.store = store
-        let contents = store.read(id)
-        self.text = contents.text
-        self.savedText = contents.text
-        self.version = contents.version
+        if let immediate = store.readImmediately(id) {
+            self.text = immediate.text
+            self.savedText = immediate.text
+            self.version = immediate.version
+            self.loadState = .ready
+        } else {
+            self.text = ""
+            self.savedText = ""
+            self.version = nil
+            self.loadState = .loading
+            Task { [weak self] in await self?.load() }
+        }
 
         cancellable = $text
             .dropFirst()
@@ -46,8 +68,29 @@ final class DocumentModel: ObservableObject, Identifiable {
             }
     }
 
+    /// Fetches a document that wasn't available at once. Failure is reported
+    /// rather than swallowed: an empty editor that silently isn't your file is
+    /// the worst outcome here.
+    private func load() async {
+        do {
+            let contents = try await store.read(id)
+            text = contents.text
+            savedText = contents.text
+            version = contents.version
+            loadState = .ready
+        } catch {
+            loadState = .failed(error.localizedDescription)
+        }
+    }
+
+    func retryLoad() {
+        guard case .failed = loadState else { return }
+        loadState = .loading
+        Task { [weak self] in await self?.load() }
+    }
+
     func saveNow() {
-        guard text != savedText, !hasConflict else { return }
+        guard loadState == .ready, !isReadOnly, text != savedText, !hasConflict else { return }
         write()
     }
 
@@ -55,7 +98,8 @@ final class DocumentModel: ObservableObject, Identifiable {
     /// simply follows the file; one with unsaved edits raises a conflict
     /// rather than picking a winner on the user's behalf.
     func reconcileWithDisk() {
-        guard let current = store.version(of: id), current != version else { return }
+        guard loadState == .ready,
+              let current = store.versionImmediately(of: id), current != version else { return }
         guard text == savedText else {
             hasConflict = true
             return
@@ -67,7 +111,7 @@ final class DocumentModel: ObservableObject, Identifiable {
 
     /// Keep what's in the editor, overwriting whatever is stored.
     func resolveKeepingMine() {
-        version = store.version(of: id)   // accept their version as the base
+        version = store.versionImmediately(of: id)   // accept their version as the base
         write()
     }
 
@@ -92,7 +136,11 @@ final class DocumentModel: ObservableObject, Identifiable {
     }
 
     private func reload() {
-        let contents = store.read(id)
+        guard let contents = store.readImmediately(id) else {
+            loadState = .loading
+            Task { [weak self] in await self?.load() }
+            return
+        }
         // Assigning `text` re-triggers the autosave debounce, but by then it
         // equals `savedText`, so the save is a no-op.
         text = contents.text
