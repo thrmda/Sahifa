@@ -20,6 +20,7 @@ final class WindowState: ObservableObject {
 
     private weak var model: AppModel?
     private var filesObservation: AnyCancellable?
+    private var workspaceObservation: AnyCancellable?
 
     init() {
         showPreview = UserDefaults.standard.bool(forKey: "showPreview")
@@ -32,13 +33,26 @@ final class WindowState: ObservableObject {
             // A Finder open during cold launch lands before any window exists.
             selectedFile = model.takePendingSelection() ?? model.defaultSelection
         }
+        // A window gives up its document only when that file is genuinely gone
+        // from disk — NOT merely absent from the current listing. The listing
+        // changes wholesale whenever the workspace folder moves, and opening
+        // one file from Finder does exactly that; keying off membership alone
+        // yanked every window onto the newly opened file.
         filesObservation = model.$files.sink { [weak self] files in
             guard let self else { return }
-            if let selected = self.selectedFile, !files.contains(selected) {
+            guard let selected = self.selectedFile else {
                 self.selectedFile = files.first
-            } else if self.selectedFile == nil {
+                return
+            }
+            if !files.contains(selected),
+               !FileManager.default.fileExists(atPath: selected.path) {
                 self.selectedFile = files.first
             }
+        }
+        // A deliberate folder switch (Open Folder…) *should* move every window.
+        workspaceObservation = model.workspaceDidChange.sink { [weak self] in
+            guard let self else { return }
+            self.selectedFile = self.model?.files.first
         }
     }
 

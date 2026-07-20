@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -29,6 +30,12 @@ final class AppModel: ObservableObject {
     /// External open that arrived before any window attached (cold launch via
     /// Finder); consumed by the first WindowState.attach.
     private var pendingSelection: URL?
+
+    /// Fires only when the user *deliberately* switches workspace folder
+    /// (Open Folder…), so every window adopts the new folder. Opening an
+    /// individual file also changes `workspaceURL` — but that must NOT move
+    /// other windows, so it deliberately does not fire this.
+    let workspaceDidChange = PassthroughSubject<Void, Never>()
 
     init() {
         // Dev convenience: `Sahifa -workspace /path` opens a folder or a
@@ -67,6 +74,7 @@ final class AppModel: ObservableObject {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         saveBookmark(url)
         openItem(url)
+        workspaceDidChange.send()
     }
 
     func chooseFile() {
@@ -76,8 +84,9 @@ final class AppModel: ObservableObject {
         panel.allowsMultipleSelection = false
         panel.allowedContentTypes = Self.markdownTypes
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        saveBookmark(url)
-        openItem(url)
+        // Same routing as a Finder open: the file lands in the window that
+        // asked for it, and no other window is disturbed.
+        openExternal([url])
     }
 
     /// Folders go to the workspace slot; individual files to a small recent
@@ -102,6 +111,11 @@ final class AppModel: ObservableObject {
 
     private static let markdownTypes: [UTType] =
         [UTType(filenameExtension: "md"), UTType(filenameExtension: "markdown")].compactMap { $0 }
+
+    /// What counts as openable, for every path that takes a file from outside
+    /// the app (Finder, drag-drop). Matches the extensions declared in
+    /// `UTImportedTypeDeclarations`; keep the two in step.
+    static let markdownExtensions = ["md", "markdown", "mdown", "mkd", "mkdn"]
 
     /// Opens either a folder (workspace) or a single Markdown file. For a
     /// file, the workspace becomes its parent folder; under the sandbox the
@@ -135,8 +149,7 @@ final class AppModel: ObservableObject {
         for url in urls {
             let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory
                 ?? url.hasDirectoryPath
-            let isMarkdown = ["md", "markdown", "mdown", "mkd", "mkdn", "txt"]
-                .contains(url.pathExtension.lowercased())
+            let isMarkdown = Self.markdownExtensions.contains(url.pathExtension.lowercased())
             guard isDirectory || isMarkdown else { continue }
             saveBookmark(url)
             openItem(url)

@@ -63,7 +63,7 @@ final class BidiTextView: NSTextView {
             let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory
                 ?? url.hasDirectoryPath
             return isDirectory
-                || ["md", "markdown", "mdown", "mkd", "mkdn"].contains(url.pathExtension.lowercased())
+                || AppModel.markdownExtensions.contains(url.pathExtension.lowercased())
         }
     }
 }
