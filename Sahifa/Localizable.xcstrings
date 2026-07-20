@@ -359,6 +359,16 @@
         }
       }
     },
+    "Move to Trash": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "نقل إلى المهملات"
+          }
+        }
+      }
+    },
     "New File": {
       "extractionState": "manual",
       "localizations": {
@@ -544,12 +554,32 @@
         }
       }
     },
+    "Remove from Opened Files": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إزالة من الملفات المفتوحة"
+          }
+        }
+      }
+    },
     "Remove from Sidebar": {
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
             "value": "إزالة من الشريط الجانبي"
+          }
+        }
+      }
+    },
+    "Rename…": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إعادة تسمية…"
           }
         }
       }

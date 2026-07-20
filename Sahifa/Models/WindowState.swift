@@ -16,6 +16,9 @@ final class WindowState: ObservableObject {
     /// Expansion is per window: two windows can browse the same tree at
     /// different depths, the same way each keeps its own document.
     @Published var expanded: Set<DocumentID> = []
+    /// The row currently being renamed inline, and the text being edited.
+    @Published var renaming: DocumentID?
+    @Published var renameText = ""
     /// Per-window; the last change also becomes the default for new windows.
     @Published var showPreview: Bool {
         didSet { UserDefaults.standard.set(showPreview, forKey: "showPreview") }
@@ -50,6 +53,21 @@ final class WindowState: ObservableObject {
                 if !model.exists(selected) {
                     self.selection = model.defaultSelection
                 }
+            }
+            .store(in: &observations)
+        // A rename moves every ID underneath it, so each window rewrites its
+        // own selection and open folders rather than losing its place.
+        model.documentMoved
+            .sink { [weak self] move in
+                guard let self else { return }
+                if let selection = self.selection, selection.isWithin(move.from) {
+                    self.selection = move.to.flatMap { selection.remapping(from: move.from, to: $0) }
+                        ?? model.defaultSelection
+                }
+                self.expanded = Set(self.expanded.compactMap { id in
+                    guard id.isWithin(move.from) else { return id }
+                    return move.to.flatMap { id.remapping(from: move.from, to: $0) }
+                })
             }
             .store(in: &observations)
         // A window sitting on nothing adopts a newly added folder; one with a

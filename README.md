@@ -67,11 +67,12 @@ xcodebuild -project Sahifa.xcodeproj -scheme Sahifa -configuration Release build
 The first build resolves one Swift package (swift-markdown) from GitHub.
 Fonts, icon and colors are already in the repo — no other setup.
 
-Regression tests for the trickiest non-UI behaviour — what happens when a file
-changes on disk while it's open — run without Xcode or an app bundle:
+Regression tests for the trickiest non-UI behaviour run without Xcode or an
+app bundle — the model layer compiles on its own:
 
 ```bash
-scripts/test-document-conflicts.sh
+scripts/test-document-conflicts.sh   # files changed on disk while open
+scripts/test-tree-operations.sh      # source/tree ids, rename, move to trash
 ```
 
 On first launch, click **Add Folder…** (⇧⌘O) and pick any folder of `.md`
@@ -87,6 +88,7 @@ English/Arabic document and an Arabic-named file.
 | Open File… | ⌘O |
 | Add Folder… (adds a sidebar source) | ⇧⌘O |
 | Open Recent (folders and files) | File menu |
+| Rename / Move to Trash | right-click in sidebar |
 | New file | ⌘N |
 | New window | ⇧⌘N |
 | New tab | ⌘T |

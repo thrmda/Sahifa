@@ -172,6 +172,10 @@ private struct NodeLabel: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var windowState: WindowState
     @Environment(\.layoutDirection) private var layoutDirection
+    @FocusState private var renameFieldFocused: Bool
+
+    private var isLoose: Bool { node.id.sourceID == Source.looseFilesID }
+    private var isRenaming: Bool { windowState.renaming == node.id }
 
     var body: some View {
         HStack(spacing: 7) {
@@ -179,15 +183,34 @@ private struct NodeLabel: View {
                 .foregroundStyle(Color.slate)
                 .imageScale(.small)
                 .accessibilityHidden(true)
-            Text(verbatim: chromeLabel(node.name, layoutDirection))
-                .font(.custom("IBMPlexSans", size: 13))
-                .lineLimit(1)
-                .truncationMode(.tail)
+            if isRenaming {
+                // Inline, like Finder and Xcode — a sheet to rename one file
+                // is heavier than the action deserves.
+                TextField("", text: $windowState.renameText)
+                    .textFieldStyle(.plain)
+                    .font(.custom("IBMPlexSans", size: 13))
+                    .focused($renameFieldFocused)
+                    .onSubmit { commitRename() }
+                    .onExitCommand { windowState.renaming = nil }
+                    .onChange(of: renameFieldFocused) { _, focused in
+                        // Clicking away commits, matching Finder.
+                        if !focused && isRenaming { commitRename() }
+                    }
+                    .task { renameFieldFocused = true }
+            } else {
+                Text(verbatim: chromeLabel(node.name, layoutDirection))
+                    .font(.custom("IBMPlexSans", size: 13))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
             Spacer(minLength: 0)
         }
         .padding(.vertical, 2)
         .contentShape(Rectangle())
         .contextMenu {
+            if !isLoose {
+                Button("Rename…") { beginRename() }
+            }
             Button("Reveal in Finder") {
                 if let url = model.url(for: node.id) {
                     NSWorkspace.shared.activateFileViewerSelecting([url])
@@ -201,6 +224,30 @@ private struct NodeLabel: View {
                     }
                 }
             }
+            Divider()
+            if isLoose {
+                // Its folder isn't in the sidebar, so "remove" here means stop
+                // listing it — deleting the file is the separate, louder verb.
+                Button("Remove from Opened Files") {
+                    model.removeFromOpenedFiles(node.id)
+                }
+            }
+            Button("Move to Trash") { model.moveToTrash(node.id) }
+        }
+    }
+
+    private func beginRename() {
+        windowState.renameText = node.name
+        windowState.renaming = node.id
+    }
+
+    private func commitRename() {
+        let newName = windowState.renameText
+        windowState.renaming = nil
+        guard newName != node.name else { return }
+        if let renamed = model.rename(node.id, to: newName),
+           windowState.selection == nil {
+            windowState.selection = renamed
         }
     }
 }

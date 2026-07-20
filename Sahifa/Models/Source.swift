@@ -20,6 +20,30 @@ struct DocumentID: Hashable, Codable {
         DocumentID(sourceID: sourceID,
                    path: path.isEmpty ? component : "\(path)/\(component)")
     }
+
+    var parent: DocumentID? {
+        guard !path.isEmpty else { return nil }
+        return DocumentID(sourceID: sourceID,
+                          path: (path as NSString).deletingLastPathComponent)
+    }
+
+    /// True when this is `other`, or lives inside it. Renaming a folder has to
+    /// find everything underneath it.
+    func isWithin(_ other: DocumentID) -> Bool {
+        guard sourceID == other.sourceID else { return false }
+        if other.path.isEmpty { return true }
+        return path == other.path || path.hasPrefix(other.path + "/")
+    }
+
+    /// Rewrites this ID as though `from` had been renamed to `to`. Returns nil
+    /// when this ID isn't affected.
+    func remapping(from: DocumentID, to: DocumentID) -> DocumentID? {
+        guard isWithin(from) else { return nil }
+        if path == from.path { return to }
+        let suffix = path.dropFirst(from.path.isEmpty ? 0 : from.path.count + 1)
+        return DocumentID(sourceID: to.sourceID,
+                          path: to.path.isEmpty ? String(suffix) : "\(to.path)/\(suffix)")
+    }
 }
 
 /// A root the user has added: today always a local folder, plus the one

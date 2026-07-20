@@ -375,6 +375,84 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: Renaming and deleting
+
+    /// Announces that a document (or a whole folder) moved or went away, so
+    /// each window can fix up its own selection and expanded folders. `to` is
+    /// nil when the item was deleted.
+    let documentMoved = PassthroughSubject<(from: DocumentID, to: DocumentID?), Never>()
+
+    /// Renames a file or folder. The new name is the *whole* filename, as in
+    /// Finder — but dropping the extension would quietly take a file out of
+    /// the tree, so an omitted extension keeps the old one.
+    @discardableResult
+    func rename(_ id: DocumentID, to proposed: String) -> DocumentID? {
+        let trimmed = proposed.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.contains("/"), !trimmed.hasPrefix("."),
+              let source = source(id.sourceID), source.kind == .localFolder,
+              let parent = id.parent
+        else { return nil }
+
+        let oldURL = source.url(for: id)
+        var name = trimmed
+        if (name as NSString).pathExtension.isEmpty {
+            let existing = (id.path as NSString).pathExtension
+            if !existing.isEmpty { name += ".\(existing)" }
+        }
+        guard name != id.name else { return nil }
+        let newURL = source.url(for: parent).appending(path: name)
+        guard !FileManager.default.fileExists(atPath: newURL.path) else { return nil }
+
+        // Flush pending edits before the file moves out from under them.
+        documentCache[id]?.saveNow()
+        do {
+            try FileManager.default.moveItem(at: oldURL, to: newURL)
+        } catch {
+            return nil
+        }
+        let newID = parent.appending(name)
+        relocate(from: id, to: newID)
+        loadChildren(of: parent, force: true)
+        return newID
+    }
+
+    /// Moves to Trash rather than deleting: recoverable, and the macOS
+    /// convention, which is also why there's no confirmation prompt.
+    func moveToTrash(_ id: DocumentID) {
+        guard let source = source(id.sourceID), let url = self.url(for: id) else { return }
+        if source.kind == .looseFiles {
+            // Trashing it should also stop it being listed.
+            looseFiles.removeAll { $0.standardizedFileURL == url.standardizedFileURL }
+        }
+        try? FileManager.default.trashItem(at: url, resultingItemURL: nil)
+        relocate(from: id, to: nil)
+        if source.kind == .looseFiles {
+            refreshLooseFiles()
+        } else if let parent = id.parent {
+            loadChildren(of: parent, force: true)
+        }
+    }
+
+    /// Loose files only: stop listing it without touching the file itself.
+    func removeFromOpenedFiles(_ id: DocumentID) {
+        guard let url = self.url(for: id) else { return }
+        looseFiles.removeAll { $0.standardizedFileURL == url.standardizedFileURL }
+        relocate(from: id, to: nil)
+        refreshLooseFiles()
+    }
+
+    /// Drops cached state for an item and everything under it, then tells the
+    /// windows so their selection and open folders follow.
+    private func relocate(from: DocumentID, to: DocumentID?) {
+        for key in documentCache.keys where key.isWithin(from) {
+            documentCache[key] = nil
+        }
+        for key in childrenByDirectory.keys where key.isWithin(from) {
+            childrenByDirectory[key] = nil
+        }
+        documentMoved.send((from: from, to: to))
+    }
+
     // MARK: File-system monitoring
 
     /// One watcher per source root. Deeper directories are re-read on expand
