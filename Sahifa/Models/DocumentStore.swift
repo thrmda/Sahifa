@@ -44,9 +44,12 @@ protocol DocumentStore: Sendable {
     /// waiting. Remote stores return nil and answer during `read` instead.
     func versionImmediately(of id: DocumentID) -> VersionToken?
 
+    /// Async because a networked store cannot answer synchronously. A local
+    /// file still completes without ever suspending, so nothing waits on
+    /// something that was already done.
     @discardableResult
     func write(_ text: String, to id: DocumentID,
-               expecting: VersionToken?) throws -> VersionToken?
+               expecting: VersionToken?) async throws -> VersionToken?
 }
 
 /// Reads and writes documents in one local folder.
@@ -117,7 +120,7 @@ struct LocalFileStore: DocumentStore {
     /// which beats dropping it.
     @discardableResult
     func write(_ text: String, to id: DocumentID,
-               expecting: VersionToken?) throws -> VersionToken? {
+               expecting: VersionToken?) async throws -> VersionToken? {
         if let current = version(of: id), current != expecting {
             throw DocumentStoreError.versionConflict
         }

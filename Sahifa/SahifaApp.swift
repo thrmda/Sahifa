@@ -18,6 +18,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
         true
     }
+
+    /// A local save finishes before the app can quit anyway. A save going over
+    /// a network does not, so quitting waits for it rather than dropping the
+    /// last thing typed.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        MainActor.assumeIsolated {
+            guard AppModel.shared.hasPendingSaves else { return .terminateNow }
+            Task {
+                await AppModel.shared.flushAll()
+                NSApp.reply(toApplicationShouldTerminate: true)
+            }
+            return .terminateLater
+        }
+    }
 }
 
 @main

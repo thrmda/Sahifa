@@ -19,18 +19,13 @@ struct GitHubStore: DocumentStore {
     /// nil reads anonymously, which works for public repositories.
     let token: String?
 
-    /// Step 1 browses and reads. Writing arrives with the credential work,
-    /// which is also when the conflict path gains a real async save.
-    var isReadOnly: Bool { true }
+    /// Without a credential a repository can still be browsed, but not
+    /// written to. Whether the credential actually grants write access can
+    /// only be discovered by trying — GitHub answers that with a 403.
+    var isReadOnly: Bool { token == nil }
 
     func readImmediately(_ id: DocumentID) -> DocumentContents? { nil }
     func versionImmediately(of id: DocumentID) -> VersionToken? { nil }
-
-    @discardableResult
-    func write(_ text: String, to id: DocumentID,
-               expecting: VersionToken?) throws -> VersionToken? {
-        throw RemoteStoreError.readOnly
-    }
 
     var displayName: String { "\(owner)/\(repository)" }
 
@@ -59,6 +54,12 @@ struct GitHubStore: DocumentStore {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         request.timeoutInterval = 30
+        // URLSession caches GET responses, and GitHub's contents endpoint is
+        // cacheable — so a read taken just after a save was being answered
+        // from the local cache with the *previous* version of the document.
+        // Always go to the server; correctness matters more here than a
+        // request saved.
+        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         return request
     }
 
@@ -127,6 +128,60 @@ struct GitHubStore: DocumentStore {
         return DocumentContents(text: try await readBlob(sha: entry.sha), version: version)
     }
 
+    // MARK: Writing
+
+    /// Sends the document back, quoting the sha it was read at. GitHub
+    /// rejects the write if that sha is no longer current, which is the same
+    /// question a local file answers with its modification date — so the
+    /// conflict handling above it needs no special case for either.
+    @discardableResult
+    func write(_ text: String, to id: DocumentID,
+               expecting: VersionToken?) async throws -> VersionToken? {
+        guard let token, !token.isEmpty else { throw RemoteStoreError.readOnly }
+        var request = URLRequest(url: endpoint(for: id))
+        request.httpMethod = "PUT"
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30
+
+        var body: [String: Any] = [
+            "message": "Update \(id.name)",
+            "content": Data(text.utf8).base64EncodedString(),
+        ]
+        // Absent sha means "create"; GitHub refuses an update without one.
+        if let expecting { body["sha"] = expecting.raw }
+        if let branch { body["branch"] = branch }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw RemoteStoreError.server(status: 0)
+        }
+        switch http.statusCode {
+        case 200..<300:
+            struct Result: Decodable {
+                struct Content: Decodable { let sha: String }
+                let content: Content
+            }
+            let result = try JSONDecoder().decode(Result.self, from: data)
+            return VersionToken(raw: result.content.sha)
+        case 409, 422:
+            // 409 is an outright conflict; 422 is what GitHub returns when the
+            // sha quoted is stale. Both mean the same thing to the caller.
+            throw DocumentStoreError.versionConflict
+        case 401:
+            throw RemoteStoreError.notAuthorised
+        case 403:
+            throw RemoteStoreError.readOnly
+        case 404:
+            throw RemoteStoreError.notFound
+        default:
+            throw RemoteStoreError.server(status: http.statusCode)
+        }
+    }
+
     private func readBlob(sha: String) async throws -> String {
         let url = URL(string:
             "https://api.github.com/repos/\(owner)/\(repository)/git/blobs/\(sha)")!
@@ -158,7 +213,7 @@ enum RemoteStoreError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .readOnly:
-            return String(localized: "This source is read-only.")
+            return String(localized: "This account can't write to that repository.")
         case .notFound:
             return String(localized: "Not found on the server.")
         case .notAuthorised:

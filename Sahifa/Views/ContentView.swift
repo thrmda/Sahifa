@@ -467,6 +467,7 @@ struct DocumentEditorView: View {
             }
             Divider()
             StatusBarView(text: document.text, errorMessage: document.lastError,
+                          isSaving: document.isSaving,
                           showPreview: $windowState.showPreview)
         }
         .background(Color.paper)

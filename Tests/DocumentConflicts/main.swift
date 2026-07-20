@@ -28,6 +28,12 @@ func makeDocument(_ url: URL) -> DocumentModel {
 func onDisk(_ url: URL) -> String {
     (try? String(contentsOf: url, encoding: .utf8)) ?? "<unreadable>"
 }
+/// Conflict resolution kicks off a task; give it a moment to finish.
+@MainActor
+func settle() async {
+    try? await Task.sleep(nanoseconds: 300_000_000)
+}
+
 /// Another program writing the file.
 func externalWrite(_ url: URL, _ contents: String) {
     try! contents.write(to: url, atomically: true, encoding: .utf8)
@@ -35,7 +41,8 @@ func externalWrite(_ url: URL, _ contents: String) {
 
 // MARK: The store's own contract
 
-do {
+@MainActor
+func storeContract() async {
     let url = makeFile("store.md", "one")
     let id = testSource.documentID(for: url)!
     let first = testStore.version(of: id)
@@ -44,14 +51,14 @@ do {
     check("reading returns text and that version",
           readBack?.text == "one" && readBack?.version == first)
 
-    let next = try! testStore.write("two", to: id, expecting: first)
+    let next = try! await testStore.write("two", to: id, expecting: first)
     check("writing at the expected version moves it on", next != nil && next != first)
     check("…and the text landed", onDisk(url) == "two", onDisk(url))
 
     // Writing against a version someone else has moved past must be refused.
     externalWrite(url, "theirs")
     var refused = false
-    do { _ = try testStore.write("mine", to: id, expecting: next) }
+    do { _ = try await testStore.write("mine", to: id, expecting: next) }
     catch DocumentStoreError.versionConflict { refused = true }
     catch {}
     check("writing at a stale version is refused", refused)
@@ -59,11 +66,12 @@ do {
 
     let missing = testSource.documentID(for: dir.appendingPathComponent("nope.md"))!
     check("an absent document has no version", testStore.version(of: missing) == nil)
-    check("…and is writable, so nothing is lost",
-          (try? testStore.write("new", to: missing, expecting: nil)) != nil)
+    let wrote = try? await testStore.write("new", to: missing, expecting: nil)
+    check("…and is writable, so nothing is lost", wrote != nil)
 }
 
-MainActor.assumeIsolated {
+@MainActor
+func documentBehaviour() async {
     // 1. No local edits + external change → follow the file silently.
     do {
         let url = makeFile("clean.md", "original")
@@ -80,14 +88,14 @@ MainActor.assumeIsolated {
         let doc = makeDocument(url)
         doc.text = "my unsaved edit"
         externalWrite(url, "their edit")
-        doc.saveNow()
+        await doc.flush()
         check("autosave refuses to overwrite", doc.hasConflict)
         check("…leaving their version on disk", onDisk(url) == "their edit", onDisk(url))
         check("…and keeping mine in the editor", doc.text == "my unsaved edit")
 
         // Autosave must stay paused while unresolved.
         doc.text = "my unsaved edit, extended"
-        doc.saveNow()
+        await doc.flush()
         check("further autosaves stay paused", onDisk(url) == "their edit", onDisk(url))
     }
 
@@ -97,15 +105,16 @@ MainActor.assumeIsolated {
         let doc = makeDocument(url)
         doc.text = "mine"
         externalWrite(url, "theirs")
-        doc.saveNow()
+        await doc.flush()
         check("conflict raised", doc.hasConflict)
         doc.resolveKeepingMine()
+        await settle()
         check("keep-mine writes my version", onDisk(url) == "mine", onDisk(url))
         check("…and clears the conflict", !doc.hasConflict)
 
         // Autosave works again afterwards.
         doc.text = "mine, later"
-        doc.saveNow()
+        await doc.flush()
         check("autosave resumes after resolving", onDisk(url) == "mine, later", onDisk(url))
     }
 
@@ -115,7 +124,7 @@ MainActor.assumeIsolated {
         let doc = makeDocument(url)
         doc.text = "mine"
         externalWrite(url, "theirs")
-        doc.saveNow()
+        await doc.flush()
         check("conflict raised", doc.hasConflict)
         doc.resolveUsingDisk()
         check("reload takes their version", doc.text == "theirs", doc.text)
@@ -127,7 +136,7 @@ MainActor.assumeIsolated {
         let url = makeFile("normal.md", "original")
         let doc = makeDocument(url)
         doc.text = "edited normally"
-        doc.saveNow()
+        await doc.flush()
         check("ordinary autosave still writes", onDisk(url) == "edited normally", onDisk(url))
         check("…with no conflict", !doc.hasConflict)
     }
@@ -138,7 +147,7 @@ MainActor.assumeIsolated {
         let doc = makeDocument(url)
         doc.text = "still wanted"
         try? FileManager.default.removeItem(at: url)
-        doc.saveNow()
+        await doc.flush()
         check("a deleted file is recreated, not lost", onDisk(url) == "still wanted", onDisk(url))
     }
 
@@ -148,11 +157,13 @@ MainActor.assumeIsolated {
         let doc = makeDocument(url)
         doc.text = "bbbb"
         externalWrite(url, "cccc")
-        doc.saveNow()
+        await doc.flush()
         check("same-length external edit is still detected", doc.hasConflict)
         check("…leaving their version on disk", onDisk(url) == "cccc", onDisk(url))
     }
 }
 
+await storeContract()
+await documentBehaviour()
 print(failures == 0 ? "\nALL PASS" : "\n\(failures) FAILURE(S)")
 exit(failures == 0 ? 0 : 1)

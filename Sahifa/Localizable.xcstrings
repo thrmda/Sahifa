@@ -835,6 +835,16 @@
         }
       }
     },
+    "Saving…": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "جارٍ الحفظ…"
+          }
+        }
+      }
+    },
     "Show Format Bar": {
       "localizations": {
         "ar": {
@@ -932,6 +942,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "لم يعد الرمز يملك صلاحية الوصول. أعد الاتصال لمتابعة الحفظ."
+          }
+        }
+      }
+    },
+    "This account can't write to that repository.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لا يملك هذا الحساب صلاحية الكتابة في ذلك المستودع."
           }
         }
       }

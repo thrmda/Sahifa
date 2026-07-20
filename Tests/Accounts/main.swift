@@ -67,10 +67,11 @@ func main() async {
     await MainActor.run {
         account.disconnect()
         check("disconnect leaves nothing behind", account.token == nil)
-        // The real credential must be untouched by any of the above.
-        check("a real signed-in account is left alone",
-              GitHubAccount.shared.token == Keychain.get("github"),
-              "the test reached the production credential")
+        // Assert the isolation structurally rather than by reading the real
+        // item: touching it would both risk the credential and make macOS
+        // prompt for the keychain password on every run.
+        check("the test never addresses the production credential",
+              !account.describesProductionCredential)
     }
 }
 

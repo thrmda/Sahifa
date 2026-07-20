@@ -45,7 +45,8 @@ check("an unaffected path remaps to nil",
 
 // MARK: Real file operations
 
-MainActor.assumeIsolated {
+@MainActor
+func fileOperations() async {
     let model = AppModel()
     model.openExternal([root])
     guard let source = model.sources.first(where: { $0.kind == .localFolder }) else {
@@ -60,21 +61,21 @@ MainActor.assumeIsolated {
     check("source lists the tree root", model.children(of: docID(""))?.isEmpty == false)
 
     // Rename a file, keeping the extension the user didn't type.
-    let renamed = model.rename(docID("root.md"), to: "renamed")
+    let renamed = await model.rename(docID("root.md"), to: "renamed")
     check("rename returns the new id", renamed == docID("renamed.md"), String(describing: renamed))
     check("…the file moved on disk", exists("renamed.md") && !exists("root.md"))
 
     // Rename with an explicit extension is taken as given.
-    let explicit = model.rename(docID("spare.md"), to: "kept.markdown")
+    let explicit = await model.rename(docID("spare.md"), to: "kept.markdown")
     check("an explicit extension is honoured", explicit == docID("kept.markdown"))
     check("…and moved on disk", exists("kept.markdown") && !exists("spare.md"))
 
     // Rejections.
-    check("empty name refused", model.rename(docID("renamed.md"), to: "   ") == nil)
-    check("slash refused", model.rename(docID("renamed.md"), to: "a/b.md") == nil)
-    check("dotfile refused", model.rename(docID("renamed.md"), to: ".hidden") == nil)
+    check("empty name refused", await model.rename(docID("renamed.md"), to: "   ") == nil)
+    check("slash refused", await model.rename(docID("renamed.md"), to: "a/b.md") == nil)
+    check("dotfile refused", await model.rename(docID("renamed.md"), to: ".hidden") == nil)
     check("collision refused",
-          model.rename(docID("renamed.md"), to: "kept.markdown") == nil)
+          await model.rename(docID("renamed.md"), to: "kept.markdown") == nil)
     check("…and nothing moved", exists("renamed.md") && exists("kept.markdown"))
 
     // Rename a folder: every descendant id has to move with it.
@@ -82,7 +83,7 @@ MainActor.assumeIsolated {
     let token = model.documentMoved.sink { moves.append($0) }
     model.loadChildren(of: docID("projects"))
     model.loadChildren(of: docID("projects/alpha"))
-    let folder = model.rename(docID("projects"), to: "work")
+    let folder = await model.rename(docID("projects"), to: "work")
     check("folder rename returns the new id", folder == docID("work"))
     check("…the folder moved on disk",
           exists("work/alpha/deep.md") && !exists("projects/plan.md"))
@@ -124,6 +125,8 @@ MainActor.assumeIsolated {
           moves.last?.from == docID("kept.markdown") && moves.last?.to == nil)
     _ = token
 }
+
+await fileOperations()
 
 // Clean up our own trashed test files rather than leaving litter behind.
 let trash = fm.urls(for: .trashDirectory, in: .userDomainMask).first

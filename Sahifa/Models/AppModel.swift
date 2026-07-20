@@ -440,6 +440,20 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Anything still to be written — asked before letting the app quit.
+    var hasPendingSaves: Bool {
+        documentCache.values.contains { $0.isSaving || $0.hasUnsavedChanges }
+    }
+
+    /// Awaits every outstanding save. A local file finishes immediately; a
+    /// remote one is a request that quitting has to wait for, or the last
+    /// thing typed is lost.
+    func flushAll() async {
+        for document in documentCache.values {
+            await document.flush()
+        }
+    }
+
     // MARK: Renaming and deleting
 
     /// Announces that a document (or a whole folder) moved or went away, so
@@ -450,8 +464,11 @@ final class AppModel: ObservableObject {
     /// Renames a file or folder. The new name is the *whole* filename, as in
     /// Finder — but dropping the extension would quietly take a file out of
     /// the tree, so an omitted extension keeps the old one.
+    /// Async because pending edits must reach disk *before* the file moves —
+    /// saving is no longer instant, and a write landing after the move would
+    /// recreate the file under its old name.
     @discardableResult
-    func rename(_ id: DocumentID, to proposed: String) -> DocumentID? {
+    func rename(_ id: DocumentID, to proposed: String) async -> DocumentID? {
         let trimmed = proposed.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !trimmed.contains("/"), !trimmed.hasPrefix("."),
               let source = source(id.sourceID), source.kind == .localFolder,
@@ -470,7 +487,7 @@ final class AppModel: ObservableObject {
         guard !FileManager.default.fileExists(atPath: newURL.path) else { return nil }
 
         // Flush pending edits before the file moves out from under them.
-        documentCache[id]?.saveNow()
+        await documentCache[id]?.flush()
         do {
             try FileManager.default.moveItem(at: oldURL, to: newURL)
         } catch {

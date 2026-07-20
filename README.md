@@ -38,12 +38,12 @@ on disk.
 - **IBM Plex everywhere** (bundled, SIL OFL): Plex Sans for Latin, Plex Sans
   Arabic for Arabic — matched as one superfamily per script run — and Plex
   Mono for code.
-- **GitHub repositories, read-only.** Add a repository from the File menu and
-  browse its Markdown alongside your local folders. Files are fetched as you
-  open them and clearly marked read-only — saving back isn't supported yet.
-  Public repositories need no account; connect one in Settings → Accounts for
-  private repositories and a higher request limit. The token is kept in the
-  macOS Keychain.
+- **GitHub repositories.** Add a repository from the File menu and browse its
+  Markdown alongside your local folders — files are fetched as you open them,
+  and edits save back. Public repositories can be read without an account;
+  connect one in Settings → Accounts to reach private repositories and to save.
+  The token is kept in the macOS Keychain. If someone else changes a file while
+  you have it open, you get the same conflict prompt as for a local file.
 - **Folders you add, browsed as a tree.** Add as many folders as you like;
   each stays in the sidebar and expands into its subfolders, loading them as
   you open them, and updating live when anything changes on disk. Files opened on their own sit under *Opened Files* instead of
@@ -82,6 +82,7 @@ scripts/test-tree-operations.sh      # source/tree ids, rename, move to trash
 scripts/test-formatting.sh           # formatting actions, selection, undo
 scripts/test-github-store.sh         # reading a GitHub repository (no login)
 scripts/test-accounts.sh             # Keychain storage, refused credentials
+scripts/test-github-write.sh         # saving back (opt-in, see the script)
 ```
 
 `test-formatting.sh` links the swift-markdown objects from a prior Debug

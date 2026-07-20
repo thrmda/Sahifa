@@ -22,3 +22,6 @@ xcuserdata/
 # under the SIL Open Font License.
 Brand/*
 !Brand/fonts/
+
+# Ad-hoc screenshots dropped in the project root
+Screenshot*.png

@@ -31,8 +31,15 @@ final class DocumentModel: ObservableObject, Identifiable {
     }
     @Published private(set) var loadState: LoadState
 
-    /// Browsable but not savable — a repository before writing is set up.
+    /// Browsable but not savable — a repository with no credential.
     var isReadOnly: Bool { store.isReadOnly }
+
+    /// A save is in flight. Instant for a local file; long enough to matter
+    /// for anything sent over a network, and the reason quitting waits.
+    @Published private(set) var isSaving = false
+
+    private var saveTask: Task<Void, Never>?
+    var hasUnsavedChanges: Bool { text != savedText }
 
     private let store: any DocumentStore
     private var savedText: String
@@ -89,9 +96,22 @@ final class DocumentModel: ObservableObject, Identifiable {
         Task { [weak self] in await self?.load() }
     }
 
+    /// Starts a save without waiting for it — the call sites are UI events.
+    /// Use `flush()` when the result actually has to be waited on.
     func saveNow() {
         guard loadState == .ready, !isReadOnly, text != savedText, !hasConflict else { return }
-        write()
+        // Never cancel a save already in flight; let it finish and re-check.
+        // Cancelling mid-request is how half-written documents happen.
+        guard !isSaving else { return }
+        saveTask = Task { [weak self] in await self?.write() }
+    }
+
+    /// Awaits any save in flight, then saves anything still outstanding.
+    /// Quitting and switching documents both go through this.
+    func flush() async {
+        await saveTask?.value
+        guard loadState == .ready, !isReadOnly, text != savedText, !hasConflict else { return }
+        await write()
     }
 
     /// Picks up edits made by other programs. A document with nothing unsaved
@@ -111,8 +131,18 @@ final class DocumentModel: ObservableObject, Identifiable {
 
     /// Keep what's in the editor, overwriting whatever is stored.
     func resolveKeepingMine() {
-        version = store.versionImmediately(of: id)   // accept their version as the base
-        write()
+        Task { [weak self] in
+            guard let self else { return }
+            // Adopt whatever is stored now as the base, so the write is
+            // accepted. A remote store can only answer that by fetching.
+            if let immediate = store.versionImmediately(of: id) {
+                version = immediate
+            } else if let fetched = try? await store.read(id) {
+                version = fetched.version
+            }
+            hasConflict = false
+            await write()
+        }
     }
 
     /// Take the stored version, discarding unsaved edits in the editor.
@@ -122,10 +152,15 @@ final class DocumentModel: ObservableObject, Identifiable {
 
     // MARK: Reading and writing
 
-    private func write() {
+    private func write() async {
+        isSaving = true
+        defer { isSaving = false }
+        let attempted = text
         do {
-            version = try store.write(text, to: id, expecting: version)
-            savedText = text
+            version = try await store.write(attempted, to: id, expecting: version)
+            // Compare against what was actually sent: more may have been typed
+            // while the request was in flight, and that is still unsaved.
+            if text == attempted { savedText = attempted }
             hasConflict = false
             lastError = nil
         } catch DocumentStoreError.versionConflict {

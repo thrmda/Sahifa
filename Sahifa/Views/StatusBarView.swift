@@ -10,6 +10,9 @@ import SwiftUI
 struct StatusBarView: View {
     let text: String
     var errorMessage: String?
+    /// Shown only while a save is actually in flight. A local save finishes
+    /// too fast to ever appear; one going over a network is worth seeing.
+    var isSaving: Bool = false
     @Binding var showPreview: Bool
     @AppStorage("focusMode") private var focusMode = false
     @AppStorage("showFormatBar") private var showFormatBar = true
@@ -29,6 +32,9 @@ struct StatusBarView: View {
             .accessibilityLabel(Text("Toggle Sidebar"))
             Text("Words: \(counts?.words ?? 0)")
             Text("Characters: \(counts?.characters ?? 0)")
+            if isSaving {
+                Text("Saving…")
+            }
             if let errorMessage {
                 Text(verbatim: errorMessage)
                     .foregroundStyle(.red)

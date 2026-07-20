@@ -59,6 +59,14 @@ final class GitHubAccount: ObservableObject {
         }
     }
 
+    /// True when this instance points at the names the app itself uses. Tests
+    /// assert the negative: a test binary that read or wrote the real item
+    /// would sign a real user out, and would make macOS prompt for the
+    /// keychain password on every run.
+    var describesProductionCredential: Bool {
+        keychainAccount == "github"
+    }
+
     /// nil when nothing is connected — the stores then read anonymously,
     /// which still works for public repositories.
     var token: String? {

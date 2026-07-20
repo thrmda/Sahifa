@@ -281,9 +281,11 @@ private struct NodeLabel: View {
         let newName = windowState.renameText
         windowState.renaming = nil
         guard newName != node.name else { return }
-        if let renamed = model.rename(node.id, to: newName),
-           windowState.selection == nil {
-            windowState.selection = renamed
+        Task {
+            if let renamed = await model.rename(node.id, to: newName),
+               windowState.selection == nil {
+                windowState.selection = renamed
+            }
         }
     }
 }
