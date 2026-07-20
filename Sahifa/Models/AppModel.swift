@@ -89,13 +89,17 @@ final class AppModel: ObservableObject {
         openExternal([url])
     }
 
-    /// Folders go to the workspace slot; individual files to a small recent
-    /// list, so a file opened from Finder still resolves on the next launch
-    /// (one bookmark slot would make each file open forget the folder).
+    /// Three slots, each with a distinct job: the folder keeps the sidebar's
+    /// listing across launches, the recent-file list keeps sandbox access to
+    /// files opened individually, and last-opened records what to actually
+    /// restore. Folding these together loses something either way — one slot
+    /// makes every file open forget the folder, while keying restore off the
+    /// folder alone makes a file opened from Finder vanish on relaunch.
     private func saveBookmark(_ url: URL) {
         guard let bookmark = try? url.bookmarkData(options: .withSecurityScope,
                                                    includingResourceValuesForKeys: nil,
                                                    relativeTo: nil) else { return }
+        UserDefaults.standard.set(bookmark, forKey: Self.lastOpenedKey)
         let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory
             ?? url.hasDirectoryPath
         if isDirectory {
@@ -175,40 +179,74 @@ final class AppModel: ObservableObject {
     }
 
     private static let fileBookmarksKey = "recentFileBookmarks"
+    private static let lastOpenedKey = "lastOpenedBookmark"
     private static let maxRecentFiles = 10
 
     private func restoreWorkspace() {
-        if let data = UserDefaults.standard.data(forKey: Self.bookmarkKey),
-           let url = resolveBookmark(data) {
+        // Reading a bookmark's file requires its security scope to be open, so
+        // every candidate gets opened and the ones we don't keep are closed
+        // again at the end — otherwise each launch strands a sandbox extension
+        // per remembered file.
+        var opened: [URL] = []
+
+        let folderData = UserDefaults.standard.data(forKey: Self.bookmarkKey)
+        if let folderData, let url = resolveBookmark(folderData, opened: &opened) {
             openItem(url)
         }
-        // Resolving the recent-file bookmarks re-establishes sandbox access to
-        // each one, so a later open of any of them works without a panel. Only
-        // those living in the restored workspace get listed (oldest first, so
-        // the newest ends up as `defaultSelection`).
+        // Only recent files living in the restored workspace get listed (oldest
+        // first, so the newest ends up as `defaultSelection`).
         let recent = UserDefaults.standard.array(forKey: Self.fileBookmarksKey) as? [Data] ?? []
-        let resolved = recent.compactMap(resolveBookmark)
-            .filter { FileManager.default.fileExists(atPath: $0.path) }
-        if workspaceURL == nil, let last = resolved.last {
-            standaloneFiles = [last]
-            setWorkspace(last.deletingLastPathComponent())
-        } else if let workspace = workspaceURL {
-            for url in resolved
+        var existing: [URL] = []
+        for data in recent {
+            guard let url = resolveBookmark(data, opened: &opened),
+                  FileManager.default.fileExists(atPath: url.path) else { continue }
+            existing.append(url)
+        }
+        if let workspace = workspaceURL {
+            for url in existing
             where url.deletingLastPathComponent() == workspace && !standaloneFiles.contains(url) {
                 standaloneFiles.append(url)
             }
             refreshFiles()
         }
+        // Whatever was opened last is what the app comes back to — and if that
+        // was a file from another folder, it brings its folder with it. Skipped
+        // when it *is* the folder above, which is already open: re-opening it
+        // would clear the standalone list just built.
+        if let data = UserDefaults.standard.data(forKey: Self.lastOpenedKey), data != folderData,
+           let url = resolveBookmark(data, opened: &opened),
+           FileManager.default.fileExists(atPath: url.path) {
+            openItem(url)
+            // `defaultSelection` takes the newest standalone file.
+            if let index = standaloneFiles.firstIndex(of: url) {
+                standaloneFiles.append(standaloneFiles.remove(at: index))
+            }
+        }
+        if workspaceURL == nil, let last = existing.last {
+            standaloneFiles = [last]
+            setWorkspace(last.deletingLastPathComponent())
+        }
+        // What we kept — the workspace folder and the files still listed —
+        // stays open for the app's lifetime, which is what those grants are for.
+        for url in opened where url != workspaceURL && !standaloneFiles.contains(url) {
+            url.stopAccessingSecurityScopedResource()
+        }
     }
 
-    private func resolveBookmark(_ data: Data) -> URL? {
+    /// Resolves a security-scoped bookmark and opens its scope. URLs whose
+    /// scope actually opened are appended to `opened`, so the caller can close
+    /// the ones it discards — `stopAccessing…` must only balance a `start`
+    /// that returned true.
+    private func resolveBookmark(_ data: Data, opened: inout [URL]) -> URL? {
         var stale = false
         guard let url = try? URL(resolvingBookmarkData: data,
                                  options: .withSecurityScope,
                                  relativeTo: nil,
                                  bookmarkDataIsStale: &stale)
         else { return nil }
-        _ = url.startAccessingSecurityScopedResource()
+        if url.startAccessingSecurityScopedResource() {
+            opened.append(url)
+        }
         return url
     }
 
