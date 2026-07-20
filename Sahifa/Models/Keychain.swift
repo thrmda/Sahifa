@@ -6,6 +6,12 @@ import Security
 /// Tokens never go into UserDefaults, a file, or the repository — only the
 /// harmless parts (which account, when it expires) are stored as ordinary
 /// preferences so the Settings pane can show them without unlocking anything.
+///
+/// Worth knowing: the sandbox does NOT give the app a private keychain. An
+/// item written here is the same item any other process running as this user
+/// can address by service and account name — which is how a test once deleted
+/// a real credential. Anything reaching this type in a test must therefore
+/// pass its own throwaway account name (see `GitHubAccount.init`).
 enum Keychain {
     /// Namespaced so the item is obviously ours in Keychain Access, and so a
     /// second service later doesn't collide with this one.
@@ -15,9 +21,16 @@ enum Keychain {
          kSecAttrAccount as String: account]
     }
 
-    static func set(_ secret: String, for account: String) {
-        guard let data = secret.data(using: .utf8) else { return }
-        // Replace rather than add: SecItemAdd fails on an existing item, and
+    /// Returns whether the secret was actually stored.
+    ///
+    /// The result is checked by callers on purpose. An earlier version ignored
+    /// it, and when the write failed the app went on reporting a connected
+    /// account until the next launch, when the credential simply wasn't there
+    /// — a silent failure that looked like the app forgetting its settings.
+    @discardableResult
+    static func set(_ secret: String, for account: String) -> Bool {
+        guard let data = secret.data(using: .utf8) else { return false }
+        // Replace rather than add: SecItemAdd refuses an existing item, and
         // reconnecting an account is the common case.
         SecItemDelete(query(account) as CFDictionary)
         var attributes = query(account)
@@ -25,7 +38,7 @@ enum Keychain {
         // Available once the Mac has been unlocked, and never synced to other
         // devices or included in a backup.
         attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        SecItemAdd(attributes as CFDictionary, nil)
+        return SecItemAdd(attributes as CFDictionary, nil) == errSecSuccess
     }
 
     static func get(_ account: String) -> String? {

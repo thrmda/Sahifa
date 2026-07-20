@@ -13,12 +13,18 @@ import Foundation
 /// obtained without changing anything downstream.
 @MainActor
 final class GitHubAccount: ObservableObject {
-    static let shared = GitHubAccount()
+    static let shared = GitHubAccount(
+        keychainAccount: "github",
+        loginKey: "gitHubLogin",
+        expiryKey: "gitHubTokenExpiry")
 
     enum State: Equatable {
         case disconnected
         case connecting
-        case connected(login: String)
+        /// The login name is optional: the credential is what decides whether
+        /// an account is connected, and the name is only there to display. If
+        /// the two ever disagree, the credential wins.
+        case connected(login: String?)
         /// The credential was refused — expired, revoked, or its access to a
         /// repository withdrawn. Distinct from disconnected because there is
         /// something to fix rather than something to set up.
@@ -29,16 +35,23 @@ final class GitHubAccount: ObservableObject {
     @Published private(set) var state: State = .disconnected
     @Published private(set) var expiry: Date?
 
-    private static let keychainAccount = "github"
-    private static let loginKey = "gitHubLogin"
-    private static let expiryKey = "gitHubTokenExpiry"
+    private let keychainAccount: String
+    private let loginKey: String
+    private let expiryKey: String
 
-    private init() {
-        guard Keychain.get(Self.keychainAccount) != nil,
-              let login = UserDefaults.standard.string(forKey: Self.loginKey)
-        else { return }
+    /// Names are injected rather than hard-coded so a test can operate on a
+    /// throwaway credential. The keychain is shared with every process running
+    /// as this user, so a test that reached for the real account name would
+    /// delete the account a real user is signed in to — which is exactly what
+    /// happened once.
+    init(keychainAccount: String, loginKey: String, expiryKey: String) {
+        self.keychainAccount = keychainAccount
+        self.loginKey = loginKey
+        self.expiryKey = expiryKey
+        guard Keychain.get(keychainAccount) != nil else { return }
+        let login = UserDefaults.standard.string(forKey: loginKey)
         state = .connected(login: login)
-        expiry = UserDefaults.standard.object(forKey: Self.expiryKey) as? Date
+        expiry = UserDefaults.standard.object(forKey: expiryKey) as? Date
         // A token whose stated expiry has passed is known-bad before any
         // request is made; say so rather than letting the first fetch fail.
         if let expiry, expiry < Date() {
@@ -50,7 +63,7 @@ final class GitHubAccount: ObservableObject {
     /// which still works for public repositories.
     var token: String? {
         guard case .connected = state else { return nil }
-        return Keychain.get(Self.keychainAccount)
+        return Keychain.get(keychainAccount)
     }
 
     /// Verifies a credential before storing it, so a mistyped or already
@@ -62,12 +75,16 @@ final class GitHubAccount: ObservableObject {
         state = .connecting
         do {
             let (login, expires) = try await Self.verify(token: trimmed)
-            Keychain.set(trimmed, for: Self.keychainAccount)
-            UserDefaults.standard.set(login, forKey: Self.loginKey)
+            guard Keychain.set(trimmed, for: keychainAccount) else {
+                state = .failed(String(localized:
+                    "The token couldn't be saved to your Keychain, so it wasn't kept."))
+                return
+            }
+            UserDefaults.standard.set(login, forKey: loginKey)
             if let expires {
-                UserDefaults.standard.set(expires, forKey: Self.expiryKey)
+                UserDefaults.standard.set(expires, forKey: expiryKey)
             } else {
-                UserDefaults.standard.removeObject(forKey: Self.expiryKey)
+                UserDefaults.standard.removeObject(forKey: expiryKey)
             }
             expiry = expires
             state = .connected(login: login)
@@ -77,9 +94,9 @@ final class GitHubAccount: ObservableObject {
     }
 
     func disconnect() {
-        Keychain.remove(Self.keychainAccount)
-        UserDefaults.standard.removeObject(forKey: Self.loginKey)
-        UserDefaults.standard.removeObject(forKey: Self.expiryKey)
+        Keychain.remove(keychainAccount)
+        UserDefaults.standard.removeObject(forKey: loginKey)
+        UserDefaults.standard.removeObject(forKey: expiryKey)
         expiry = nil
         state = .disconnected
     }

@@ -35,7 +35,16 @@ do {
 // MARK: Connecting with a credential GitHub refuses
 
 func main() async {
-    let account = await MainActor.run { GitHubAccount.shared }
+    // A throwaway account, NEVER GitHubAccount.shared. The keychain is shared
+    // with every process running as this user, so operating on the real names
+    // here would sign a real user out — which is precisely what an earlier
+    // version of this test did.
+    let suffix = "test-\(getpid())"
+    let account = await MainActor.run {
+        GitHubAccount(keychainAccount: "github-\(suffix)",
+                      loginKey: "gitHubLogin-\(suffix)",
+                      expiryKey: "gitHubTokenExpiry-\(suffix)")
+    }
 
     let before = await MainActor.run { account.token }
     check("no token is offered while disconnected", before == nil,
@@ -56,9 +65,12 @@ func main() async {
     check("…and nothing is stored for it", after == nil)
 
     await MainActor.run {
-        // Whitespace-only input shouldn't even reach the network.
         account.disconnect()
         check("disconnect leaves nothing behind", account.token == nil)
+        // The real credential must be untouched by any of the above.
+        check("a real signed-in account is left alone",
+              GitHubAccount.shared.token == Keychain.get("github"),
+              "the test reached the production credential")
     }
 }
 
