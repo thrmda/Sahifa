@@ -95,6 +95,28 @@ MainActor.assumeIsolated {
     check("…the new path lists correctly",
           model.children(of: docID("work"))?.contains { $0.name == "plan.md" } == true)
 
+    // A newly added source must open in a window that already has a document.
+    // Left collapsed it appears as a bare name at the bottom of the list while
+    // its contents load invisibly, which reads as the Add button doing nothing.
+    do {
+        let window = WindowState()
+        window.attach(model)
+        window.selection = docID("renamed.md")
+        let already = window.selection
+        try? fm.createDirectory(at: root.appendingPathComponent("second"),
+                                withIntermediateDirectories: true)
+        write("second/note.md")
+        model.openExternal([root.appendingPathComponent("second")])
+        guard let added = model.sources.first(where: { $0.name == "second" }) else {
+            check("second source added", false); return
+        }
+        let addedRoot = DocumentID(sourceID: added.id, path: "")
+        check("a source added while a document is open still expands",
+              window.expanded.contains(addedRoot))
+        check("…and the open document is left alone",
+              window.selection == already, String(describing: window.selection))
+    }
+
     // Trash.
     model.moveToTrash(docID("kept.markdown"))
     check("move to trash removes the file", !exists("kept.markdown"))

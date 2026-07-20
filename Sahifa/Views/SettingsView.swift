@@ -58,6 +58,11 @@ private struct GitHubConnectSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var token = ""
 
+    private var isChecking: Bool {
+        if case .connecting = account.state { return true }
+        return false
+    }
+
     private static let tokenPage =
         URL(string: "https://github.com/settings/personal-access-tokens/new")!
 
@@ -71,17 +76,28 @@ private struct GitHubConnectSheet: View {
             Link("Create a token on GitHub…", destination: Self.tokenPage)
             SecureField("Paste the token here", text: $token)
                 .textFieldStyle(.roundedBorder)
+                .disabled(isChecking)
             if case .failed(let reason) = account.state {
                 Text(verbatim: reason)
                     .foregroundStyle(Color.gold)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            HStack {
+            HStack(spacing: 10) {
                 Text("The token is kept in your Mac's Keychain.")
                     .font(.footnote)
                     .foregroundStyle(Color.slate)
                 Spacer(minLength: 12)
+                // Checking the token is a network round trip. Without this the
+                // sheet just sits there after the click, which reads as the
+                // button not having worked.
+                if isChecking {
+                    ProgressView().controlSize(.small)
+                    Text("Checking…")
+                        .font(.footnote)
+                        .foregroundStyle(Color.slate)
+                }
                 Button("Cancel") { dismiss() }
+                    .disabled(isChecking)
                 Button("Connect") {
                     Task {
                         await account.connect(token: token)
@@ -90,7 +106,8 @@ private struct GitHubConnectSheet: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.sage)
-                .disabled(token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(isChecking
+                          || token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
         .padding(20)

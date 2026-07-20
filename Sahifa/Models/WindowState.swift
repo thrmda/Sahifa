@@ -70,13 +70,18 @@ final class WindowState: ObservableObject {
                 })
             }
             .store(in: &observations)
-        // A window sitting on nothing adopts a newly added folder; one with a
-        // document open carries on.
+        // A newly added source always opens. Leaving it collapsed made adding
+        // one look like nothing had happened — the row appears at the bottom
+        // of the list showing only its name, while a repository quietly
+        // fetches behind it. Expanded, it shows its contents arriving.
+        // Selection is a separate question: a window already showing a
+        // document keeps it.
         model.sourceAdded
             .sink { [weak self] source in
-                guard let self, self.selection == nil else { return }
+                guard let self else { return }
                 let root = DocumentID(sourceID: source.id, path: "")
                 self.expanded.insert(root)
+                guard self.selection == nil else { return }
                 self.selection = model.children(of: root)?.first { !$0.isDirectory }?.id
             }
             .store(in: &observations)
