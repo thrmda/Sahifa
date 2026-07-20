@@ -32,6 +32,40 @@ final class BidiTextView: NSTextView {
         super.didChangeText()
         refreshDirectionBars()
     }
+
+    // MARK: File drops
+
+    /// NSTextView accepts file drags on its own and inserts the path as text,
+    /// which would swallow the window's file drop before SwiftUI's onDrop ever
+    /// sees it. Markdown files and folders are opened instead; anything else
+    /// (plain text drags, drags within the document) falls through to super.
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        openableURLs(in: sender).isEmpty ? super.draggingEntered(sender) : .copy
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        openableURLs(in: sender).isEmpty ? super.draggingUpdated(sender) : .copy
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let urls = openableURLs(in: sender)
+        guard !urls.isEmpty else { return super.performDragOperation(sender) }
+        MainActor.assumeIsolated { AppModel.shared.openExternal(urls) }
+        return true
+    }
+
+    private func openableURLs(in sender: NSDraggingInfo) -> [URL] {
+        let options: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
+        let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self],
+                                                        options: options) as? [URL] ?? []
+        return urls.filter { url in
+            let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory
+                ?? url.hasDirectoryPath
+            return isDirectory
+                || ["md", "markdown", "mdown", "mkd", "mkdn"].contains(url.pathExtension.lowercased())
+        }
+    }
 }
 
 /// Transparent, non-interactive margin layer that draws the direction bars.

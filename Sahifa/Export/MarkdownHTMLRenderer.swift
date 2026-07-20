@@ -27,8 +27,17 @@ enum MarkdownHTMLRenderer {
              bodyContent: "",
              script: """
              <script>
-             function sahifaRender(html) {
+             function sahifaRender(html, resetScroll) {
                document.getElementById("sahifa-content").innerHTML = html;
+               if (resetScroll) {
+                 // New document in the same WebView: back to the top, without
+                 // echoing the jump to the editor as a user scroll.
+                 __suppressScroll = true;
+                 window.scrollTo(0, 0);
+                 requestAnimationFrame(function () {
+                   requestAnimationFrame(function () { __suppressScroll = false; });
+                 });
+               }
              }
              // Scroll sync: Swift calls sahifaScrollTo() to follow the editor;
              // user scrolls post their fraction back. __suppressScroll stops the

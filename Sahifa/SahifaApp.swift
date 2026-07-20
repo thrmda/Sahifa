@@ -1,8 +1,29 @@
+import AppKit
 import SwiftUI
+
+/// Finder integration. SwiftUI's `WindowGroup` has no hook for "the user
+/// double-clicked a file" / "Open With" / a Dock-icon drop — those arrive as
+/// AppKit delegate callbacks, so the app keeps a delegate purely to forward
+/// them to AppModel.
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func application(_ application: NSApplication, open urls: [URL]) {
+        MainActor.assumeIsolated {
+            AppModel.shared.openExternal(urls)
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    /// Reopening from the Dock with all windows closed should bring a window
+    /// back rather than leave a menu-bar-only app.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        true
+    }
+}
 
 @main
 struct SahifaApp: App {
-    @StateObject private var model = AppModel()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @StateObject private var model = AppModel.shared
     @AppStorage("uiLanguage") private var uiLanguage = "system"
 
     init() {

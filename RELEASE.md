@@ -8,8 +8,9 @@ Current version: **1.0.0** (build 1). Bump it in Xcode → target *Sahifa* →
 in `Sahifa.xcodeproj/project.pbxproj` (both the Debug and Release configs).
 
 The project already has **hardened runtime enabled** and a minimal sandbox
-(`Sahifa.entitlements`: user-selected files + app-scope bookmarks) — both
-required for notarization.
+(`Sahifa.entitlements`: user-selected files, app-scope bookmarks, and the
+network-client entitlement that a sandboxed `WKWebView` requires — see Notes)
+— both required for notarization.
 
 ## What kind of build do you need?
 
@@ -89,8 +90,11 @@ it — it should launch with no Gatekeeper prompt.
 
 - The bundle identifier is `me.alangari.Sahifa`. Change it (and the signing
   certificate) if you're shipping under a different account.
-- Sahifa makes **no network calls**, so there's nothing to allow-list; the only
-  entitlements are file access and app-scope bookmarks.
+- Sahifa makes **no network calls**. It nonetheless ships the
+  `com.apple.security.network.client` entitlement, because a sandboxed
+  `WKWebView` — used for the live preview — comes up **blank** without it, even
+  though the preview only ever loads a local, self-contained HTML string. The
+  remaining entitlements are file access and app-scope bookmarks.
 - For the Mac App Store instead of direct distribution you'd switch to an
   *Apple Distribution* certificate and an App Store provisioning profile and
   submit through App Store Connect — not covered here.

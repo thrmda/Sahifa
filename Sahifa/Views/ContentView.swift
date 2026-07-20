@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @EnvironmentObject private var model: AppModel
@@ -31,7 +32,26 @@ struct ContentView: View {
         .environmentObject(windowState)
         .focusedSceneObject(windowState)
         .navigationTitle(Text(verbatim: windowState.document?.displayName ?? "Sahifa"))
+        // Finder-style drops anywhere on the window open the file/folder.
+        // Drops can land on a non-key window, so target THIS window's state.
+        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+            var accepted = false
+            for provider in providers
+            where provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                accepted = true
+                _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                    guard let url else { return }
+                    Task { @MainActor in
+                        model.openExternal([url], preferring: windowState)
+                    }
+                }
+            }
+            return accepted
+        }
+        // Finder "Open With"/Dock drops land on the frontmost window.
+        .background(KeyWindowTracker { model.frontWindowState = windowState })
         .onAppear {
+            model.frontWindowState = windowState
             windowState.attach(model)
             Exporter.shared.handleCLIFlagsIfPresent(markdown: windowState.document?.text,
                                                     title: windowState.document?.exportName ?? "Untitled")
@@ -162,8 +182,11 @@ private struct EditorPreviewSplit: View {
                     .frame(width: editorWidth)
                 if showPreview {
                     splitHandle(containerWidth: width)
-                    MarkdownPreview(markdown: document.text, scrollSync: scrollSync)
-                        .id(document.url)
+                    // No `.id(document.url)`: recreating the WebView per file
+                    // switch reloads the ~1.7 MB font-embedded shell and blanks
+                    // the pane; the coordinator swaps content in place instead.
+                    MarkdownPreview(markdown: document.text, documentURL: document.url,
+                                    scrollSync: scrollSync)
                         .frame(maxWidth: .infinity)
                 }
             }
@@ -199,7 +222,9 @@ private struct EditorPreviewSplit: View {
 
 /// Dev/testing flags (no Accessibility needed): `-windowSize 800x600`,
 /// `-devFullScreen`, `-devSecondWindow` (opens a second window selecting the
-/// last file), `-devSecondTab` (same but merged as a native tab).
+/// last file), `-devSecondTab` (same but merged as a native tab),
+/// `-devCycleFiles N` (steps the selection through the workspace every N
+/// seconds — exercises the editor/preview swap without clicking).
 @MainActor
 private func applyDevWindowFlags(model: AppModel, windowState: WindowState,
                                  openWindow: @escaping () -> Void,
@@ -225,6 +250,10 @@ private func applyDevWindowFlags(model: AppModel, windowState: WindowState,
             openSettings()
         }
     }
+    if let flagIndex = args.firstIndex(of: "-devCycleFiles"), flagIndex + 1 < args.count,
+       let period = Double(args[flagIndex + 1]), index == 0 {
+        cycleFiles(model: model, windowState: windowState, period: period, step: 0)
+    }
     if index == 0 {
         if args.contains("-devSecondWindow") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openWindow() }
@@ -237,6 +266,20 @@ private func applyDevWindowFlags(model: AppModel, windowState: WindowState,
         // Demonstrate per-window independence: the extra window shows the
         // last file instead of the default.
         windowState.selectedFile = model.files.last
+    }
+}
+
+@MainActor
+private func cycleFiles(model: AppModel, windowState: WindowState,
+                        period: Double, step: Int) {
+    DispatchQueue.main.asyncAfter(deadline: .now() + period) {
+        let files = model.files
+        guard !files.isEmpty else {
+            cycleFiles(model: model, windowState: windowState, period: period, step: step)
+            return
+        }
+        windowState.selectedFile = files[step % files.count]
+        cycleFiles(model: model, windowState: windowState, period: period, step: step + 1)
     }
 }
 
@@ -256,6 +299,50 @@ private func enterFullScreenWhenReady(attemptsLeft: Int) {
             window.toggleFullScreen(nil)
         } else if attemptsLeft > 0 {
             enterFullScreenWhenReady(attemptsLeft: attemptsLeft - 1)
+        }
+    }
+}
+
+/// Invisible view that reports when its window becomes key, so AppModel knows
+/// which window's state should receive externally opened files (Finder
+/// "Open With", Dock drops). SwiftUI offers no direct NSWindow handle; this
+/// is the standard bridge.
+private struct KeyWindowTracker: NSViewRepresentable {
+    let onBecomeKey: () -> Void
+
+    func makeNSView(context: Context) -> TrackerView {
+        let view = TrackerView()
+        view.onBecomeKey = onBecomeKey
+        return view
+    }
+
+    func updateNSView(_ nsView: TrackerView, context: Context) {
+        nsView.onBecomeKey = onBecomeKey
+    }
+
+    final class TrackerView: NSView {
+        var onBecomeKey: (() -> Void)?
+        private var observer: NSObjectProtocol?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let observer {
+                NotificationCenter.default.removeObserver(observer)
+                self.observer = nil
+            }
+            guard let window else { return }
+            if window.isKeyWindow { onBecomeKey?() }
+            observer = NotificationCenter.default.addObserver(
+                forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.onBecomeKey?() }
+            }
+        }
+
+        deinit {
+            if let observer {
+                NotificationCenter.default.removeObserver(observer)
+            }
         }
     }
 }

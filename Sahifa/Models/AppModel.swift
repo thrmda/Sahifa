@@ -7,6 +7,10 @@ import UniformTypeIdentifiers
 /// bookmark.
 @MainActor
 final class AppModel: ObservableObject {
+    /// Single instance: the SwiftUI scene owns it as a StateObject, and the
+    /// app delegate reaches it for Finder open events (application(_:open:)).
+    static let shared = AppModel()
+
     @Published private(set) var workspaceURL: URL?
     @Published private(set) var files: [URL] = []
 
@@ -14,9 +18,17 @@ final class AppModel: ObservableObject {
     private var documentCache: [URL: DocumentModel] = [:]
 
     private var monitor: DispatchSourceFileSystemObject?
-    /// Set when the user opened a single file rather than a folder.
-    private var standaloneFile: URL?
+    /// Files opened individually (panel, Finder, drag-drop) rather than via a
+    /// folder; kept listed even when the sandbox can't read their parent.
+    private var standaloneFiles: [URL] = []
     private static let bookmarkKey = "workspaceBookmark"
+
+    /// Which window's state receives externally opened files (last key
+    /// window; see KeyWindowTracker in ContentView).
+    weak var frontWindowState: WindowState?
+    /// External open that arrived before any window attached (cold launch via
+    /// Finder); consumed by the first WindowState.attach.
+    private var pendingSelection: URL?
 
     init() {
         // Dev convenience: `Sahifa -workspace /path` opens a folder or a
@@ -68,11 +80,23 @@ final class AppModel: ObservableObject {
         openItem(url)
     }
 
+    /// Folders go to the workspace slot; individual files to a small recent
+    /// list, so a file opened from Finder still resolves on the next launch
+    /// (one bookmark slot would make each file open forget the folder).
     private func saveBookmark(_ url: URL) {
-        if let bookmark = try? url.bookmarkData(options: .withSecurityScope,
-                                                includingResourceValuesForKeys: nil,
-                                                relativeTo: nil) {
+        guard let bookmark = try? url.bookmarkData(options: .withSecurityScope,
+                                                   includingResourceValuesForKeys: nil,
+                                                   relativeTo: nil) else { return }
+        let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory
+            ?? url.hasDirectoryPath
+        if isDirectory {
             UserDefaults.standard.set(bookmark, forKey: Self.bookmarkKey)
+        } else {
+            var recent = UserDefaults.standard.array(forKey: Self.fileBookmarksKey) as? [Data] ?? []
+            recent.removeAll { $0 == bookmark }
+            recent.append(bookmark)
+            UserDefaults.standard.set(recent.suffix(Self.maxRecentFiles).map { $0 },
+                                      forKey: Self.fileBookmarksKey)
         }
     }
 
@@ -86,35 +110,104 @@ final class AppModel: ObservableObject {
         let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory
             ?? url.hasDirectoryPath
         if isDirectory {
-            standaloneFile = nil
+            standaloneFiles = []
             setWorkspace(url)
         } else {
-            standaloneFile = url
-            setWorkspace(url.deletingLastPathComponent())
+            if !standaloneFiles.contains(url) { standaloneFiles.append(url) }
+            let parent = url.deletingLastPathComponent()
+            if workspaceURL == parent {
+                refreshFiles()
+            } else {
+                setWorkspace(parent)
+            }
+        }
+    }
+
+    /// Entry point for files/folders arriving from outside the app's own
+    /// panels: Finder "Open With", double-click, Dock-icon drops
+    /// (application(_:open:)) and window drag-drop. These URLs carry an
+    /// implicit sandbox grant; the bookmark persists it across launches.
+    /// Selection goes to `preferring` (the drop-target window) or the last
+    /// key window; with no window yet (cold launch), the first window to
+    /// attach picks it up.
+    func openExternal(_ urls: [URL], preferring target: WindowState? = nil) {
+        var openedFile: URL?
+        for url in urls {
+            let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory
+                ?? url.hasDirectoryPath
+            let isMarkdown = ["md", "markdown", "mdown", "mkd", "mkdn", "txt"]
+                .contains(url.pathExtension.lowercased())
+            guard isDirectory || isMarkdown else { continue }
+            saveBookmark(url)
+            openItem(url)
+            if !isDirectory { openedFile = url }
+        }
+        guard let file = openedFile else { return }
+        if let windowState = target ?? frontWindowState {
+            windowState.selectedFile = file
+        } else {
+            pendingSelection = file
         }
     }
 
     /// What a new window should open first.
     var defaultSelection: URL? {
-        standaloneFile ?? files.first
+        standaloneFiles.last ?? files.first
     }
 
+    /// One-shot: an external open that arrived before any window existed.
+    func takePendingSelection() -> URL? {
+        defer { pendingSelection = nil }
+        return pendingSelection
+    }
+
+    private static let fileBookmarksKey = "recentFileBookmarks"
+    private static let maxRecentFiles = 10
+
     private func restoreWorkspace() {
-        guard let data = UserDefaults.standard.data(forKey: Self.bookmarkKey) else { return }
+        if let data = UserDefaults.standard.data(forKey: Self.bookmarkKey),
+           let url = resolveBookmark(data) {
+            openItem(url)
+        }
+        // Resolving the recent-file bookmarks re-establishes sandbox access to
+        // each one, so a later open of any of them works without a panel. Only
+        // those living in the restored workspace get listed (oldest first, so
+        // the newest ends up as `defaultSelection`).
+        let recent = UserDefaults.standard.array(forKey: Self.fileBookmarksKey) as? [Data] ?? []
+        let resolved = recent.compactMap(resolveBookmark)
+            .filter { FileManager.default.fileExists(atPath: $0.path) }
+        if workspaceURL == nil, let last = resolved.last {
+            standaloneFiles = [last]
+            setWorkspace(last.deletingLastPathComponent())
+        } else if let workspace = workspaceURL {
+            for url in resolved
+            where url.deletingLastPathComponent() == workspace && !standaloneFiles.contains(url) {
+                standaloneFiles.append(url)
+            }
+            refreshFiles()
+        }
+    }
+
+    private func resolveBookmark(_ data: Data) -> URL? {
         var stale = false
         guard let url = try? URL(resolvingBookmarkData: data,
                                  options: .withSecurityScope,
                                  relativeTo: nil,
                                  bookmarkDataIsStale: &stale)
-        else { return }
+        else { return nil }
         _ = url.startAccessingSecurityScopedResource()
-        openItem(url)
+        return url
     }
 
     private func setWorkspace(_ url: URL) {
         monitor?.cancel()
         monitor = nil
         workspaceURL = url
+        // Standalone entries exist to keep sandbox-opened files visible when
+        // their own folder isn't readable — they belong to this workspace
+        // only. Leaving stale ones in would list files from a folder the user
+        // has moved on from.
+        standaloneFiles.removeAll { $0.deletingLastPathComponent() != url }
         refreshFiles()
         startMonitor(url)
     }
@@ -129,10 +222,10 @@ final class AppModel: ObservableObject {
         files = contents
             .filter { ["md", "markdown"].contains($0.pathExtension.lowercased()) }
             .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
-        // Sandboxed single-file open: the parent folder isn't readable, but
-        // the file itself is — keep it listed.
-        if let lone = standaloneFile, !files.contains(lone),
-           FileManager.default.fileExists(atPath: lone.path) {
+        // Sandboxed single-file opens: the parent folder isn't readable, but
+        // the files themselves are — keep them listed.
+        for lone in standaloneFiles.reversed()
+        where !files.contains(lone) && FileManager.default.fileExists(atPath: lone.path) {
             files.insert(lone, at: 0)
         }
     }

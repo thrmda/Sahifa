@@ -29,7 +29,8 @@ final class WindowState: ObservableObject {
         guard self.model == nil else { return }
         self.model = model
         if selectedFile == nil {
-            selectedFile = model.defaultSelection
+            // A Finder open during cold launch lands before any window exists.
+            selectedFile = model.takePendingSelection() ?? model.defaultSelection
         }
         filesObservation = model.$files.sink { [weak self] files in
             guard let self else { return }
