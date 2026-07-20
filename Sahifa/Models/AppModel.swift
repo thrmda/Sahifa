@@ -303,10 +303,17 @@ final class AppModel: ObservableObject {
 
     func document(for id: DocumentID) -> DocumentModel? {
         if let existing = documentCache[id] { return existing }
-        guard let url = url(for: id) else { return nil }
-        let document = DocumentModel(id: id, url: url)
+        guard let store = store(for: id.sourceID) else { return nil }
+        let document = DocumentModel(id: id, store: store)
         documentCache[id] = document
         return document
+    }
+
+    /// How documents in a source are reached. One per source, so the day a
+    /// source isn't a local folder only this needs to change.
+    private func store(for sourceID: UUID) -> LocalFileStore? {
+        guard let source = source(sourceID) else { return nil }
+        return LocalFileStore(sourceID: sourceID, root: source.rootURL)
     }
 
     /// Whether a document still resolves to something on disk — the sidebar

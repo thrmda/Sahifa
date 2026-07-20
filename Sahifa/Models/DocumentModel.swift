@@ -1,49 +1,42 @@
-import Foundation
 import Combine
+import Foundation
 
-/// One open .md file. Plain text on disk — no library, no database.
-/// Autosaves one second after the last edit.
+/// One open document. Plain text on the other side of a store — no library,
+/// no database. Autosaves one second after the last edit.
 ///
-/// Because the file is plain text in a folder the user also reaches through
-/// Finder, git and other editors, the document tracks what it last read or
-/// wrote and refuses to autosave over a file that changed underneath it.
+/// The document itself does no file I/O: it holds a `DocumentID`, a store to
+/// reach it through, and the version it last read or wrote. That last piece
+/// is what makes overwrite detection work, and it is deliberately opaque —
+/// modification date and size for a local file today, a revision id for
+/// anything fetched later, compared the same way either way.
 @MainActor
 final class DocumentModel: ObservableObject, Identifiable {
-    /// Source-scoped identity. `url` is how *this* (local) source happens to
-    /// reach the document; a later source type would resolve `id` its own way,
-    /// which is why nothing outside here keys off the URL.
     let id: DocumentID
-    let url: URL
     @Published var text: String
     @Published private(set) var lastError: String?
 
-    /// Set when the file changed on disk *and* this document has unsaved
+    /// Set when the document changed underneath us *and* there are unsaved
     /// edits — the one case where neither version can be chosen automatically.
     /// Autosave stays paused until `resolveKeepingMine`/`resolveUsingDisk`.
     @Published private(set) var hasConflict = false
 
+    private let store: LocalFileStore
     private var savedText: String
-    /// Identifies the file contents last read or written here. Anything else
-    /// on disk means another program has been at it.
-    private var diskStamp: DiskStamp?
+    private var version: VersionToken?
     private var cancellable: AnyCancellable?
 
-    var displayName: String {
-        url.lastPathComponent
-    }
+    var displayName: String { id.name }
 
     /// Suggested filename (sans extension) for exports.
-    var exportName: String {
-        url.deletingPathExtension().lastPathComponent
-    }
+    var exportName: String { (id.name as NSString).deletingPathExtension }
 
-    init(id: DocumentID, url: URL) {
+    init(id: DocumentID, store: LocalFileStore) {
         self.id = id
-        self.url = url
-        let content = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
-        self.text = content
-        self.savedText = content
-        self.diskStamp = DiskStamp(of: url)
+        self.store = store
+        let contents = store.read(id)
+        self.text = contents.text
+        self.savedText = contents.text
+        self.version = contents.version
 
         cancellable = $text
             .dropFirst()
@@ -55,14 +48,6 @@ final class DocumentModel: ObservableObject, Identifiable {
 
     func saveNow() {
         guard text != savedText, !hasConflict else { return }
-        // A stamp we can read that doesn't match ours means someone wrote to
-        // the file since. Writing now would destroy their version silently.
-        // A stamp we *can't* read means the file is gone — writing recreates
-        // it, which keeps the user's text rather than dropping it.
-        if let current = DiskStamp(of: url), current != diskStamp {
-            hasConflict = true
-            return
-        }
         write()
     }
 
@@ -70,69 +55,50 @@ final class DocumentModel: ObservableObject, Identifiable {
     /// simply follows the file; one with unsaved edits raises a conflict
     /// rather than picking a winner on the user's behalf.
     func reconcileWithDisk() {
-        guard let current = DiskStamp(of: url), current != diskStamp else { return }
+        guard let current = store.version(of: id), current != version else { return }
         guard text == savedText else {
             hasConflict = true
             return
         }
-        reloadFromDisk()
+        reload()
     }
 
     // MARK: Conflict resolution
 
-    /// Keep what's in the editor, overwriting whatever is on disk.
+    /// Keep what's in the editor, overwriting whatever is stored.
     func resolveKeepingMine() {
+        version = store.version(of: id)   // accept their version as the base
         write()
     }
 
-    /// Take the file's version, discarding unsaved edits in the editor.
+    /// Take the stored version, discarding unsaved edits in the editor.
     func resolveUsingDisk() {
-        reloadFromDisk()
+        reload()
     }
 
     // MARK: Reading and writing
 
     private func write() {
         do {
-            try text.write(to: url, atomically: true, encoding: .utf8)
+            version = try store.write(text, to: id, expecting: version)
             savedText = text
-            diskStamp = DiskStamp(of: url)
             hasConflict = false
             lastError = nil
+        } catch DocumentStoreError.versionConflict {
+            hasConflict = true
         } catch {
             lastError = error.localizedDescription
         }
     }
 
-    private func reloadFromDisk() {
-        guard let content = try? String(contentsOf: url, encoding: .utf8) else { return }
+    private func reload() {
+        let contents = store.read(id)
         // Assigning `text` re-triggers the autosave debounce, but by then it
         // equals `savedText`, so the save is a no-op.
-        text = content
-        savedText = content
-        diskStamp = DiskStamp(of: url)
+        text = contents.text
+        savedText = contents.text
+        version = contents.version
         hasConflict = false
         lastError = nil
-    }
-}
-
-/// A cheap fingerprint of a file's contents: modification date plus size.
-/// Enough to notice another program's write without re-reading the file on
-/// every autosave tick.
-private struct DiskStamp: Equatable {
-    let modified: Date
-    let size: Int
-
-    /// Reads through FileManager, NOT `URL.resourceValues`: a URL caches the
-    /// resource values it has already fetched, so re-reading through the same
-    /// URL keeps reporting the state from the first read and never notices
-    /// another program's write.
-    init?(of url: URL) {
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
-              let modified = attributes[.modificationDate] as? Date,
-              let size = attributes[.size] as? Int
-        else { return nil }
-        self.modified = modified
-        self.size = size
     }
 }

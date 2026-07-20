@@ -134,7 +134,7 @@ Sahifa/                 app sources (SwiftUI shell + TextKit 2 editor)
                         fonts, formatting commands, editor↔preview scroll sync
   Export/               Markdown→HTML renderer, HTML/PDF export, Arabic PDF
                         text-layer repair
-  Models/               sources, tree, document (plain files, autosave, bookmarks)
+  Models/               sources, tree, document store, document (autosave, bookmarks)
   Views/                sidebar, format bar, status bar, preview, settings
   Assets.xcassets       brand colors (light/dark) + app icon
   Localizable.xcstrings en / ar string catalog

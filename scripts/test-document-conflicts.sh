@@ -20,6 +20,7 @@ trap 'rm -rf "$BUILD"' EXIT
 
 swiftc -O \
   Sahifa/Models/Source.swift \
+  Sahifa/Models/DocumentStore.swift \
   Sahifa/Models/DocumentModel.swift \
   Tests/DocumentConflicts/main.swift \
   -o "$BUILD/document-conflicts"

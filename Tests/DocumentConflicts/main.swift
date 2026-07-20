@@ -13,6 +13,7 @@ defer { try? FileManager.default.removeItem(at: dir) }
 
 /// Every source is local here, so one stand-in source resolves the IDs.
 let testSource = Source(id: UUID(), kind: .localFolder, name: "test", rootURL: dir)
+let testStore = LocalFileStore(sourceID: testSource.id, root: dir)
 
 func makeFile(_ name: String, _ contents: String) -> URL {
     let url = dir.appendingPathComponent(name)
@@ -22,7 +23,7 @@ func makeFile(_ name: String, _ contents: String) -> URL {
 
 @MainActor
 func makeDocument(_ url: URL) -> DocumentModel {
-    DocumentModel(id: testSource.documentID(for: url)!, url: url)
+    DocumentModel(id: testSource.documentID(for: url)!, store: testStore)
 }
 func onDisk(_ url: URL) -> String {
     (try? String(contentsOf: url, encoding: .utf8)) ?? "<unreadable>"
@@ -30,6 +31,35 @@ func onDisk(_ url: URL) -> String {
 /// Another program writing the file.
 func externalWrite(_ url: URL, _ contents: String) {
     try! contents.write(to: url, atomically: true, encoding: .utf8)
+}
+
+// MARK: The store's own contract
+
+do {
+    let url = makeFile("store.md", "one")
+    let id = testSource.documentID(for: url)!
+    let first = testStore.version(of: id)
+    check("a stored document has a version", first != nil)
+    check("reading returns text and that version",
+          testStore.read(id).text == "one" && testStore.read(id).version == first)
+
+    let next = try! testStore.write("two", to: id, expecting: first)
+    check("writing at the expected version moves it on", next != nil && next != first)
+    check("…and the text landed", onDisk(url) == "two", onDisk(url))
+
+    // Writing against a version someone else has moved past must be refused.
+    externalWrite(url, "theirs")
+    var refused = false
+    do { _ = try testStore.write("mine", to: id, expecting: next) }
+    catch DocumentStoreError.versionConflict { refused = true }
+    catch {}
+    check("writing at a stale version is refused", refused)
+    check("…leaving their text alone", onDisk(url) == "theirs", onDisk(url))
+
+    let missing = testSource.documentID(for: dir.appendingPathComponent("nope.md"))!
+    check("an absent document has no version", testStore.version(of: missing) == nil)
+    check("…and is writable, so nothing is lost",
+          (try? testStore.write("new", to: missing, expecting: nil)) != nil)
 }
 
 MainActor.assumeIsolated {
