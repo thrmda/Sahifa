@@ -32,10 +32,8 @@ final class AppModel: ObservableObject {
     /// One DocumentModel per document, shared by every window showing it.
     private var documentCache: [DocumentID: DocumentModel] = [:]
 
-    /// One per local source root: catches files added or removed at the top
-    /// level. Deeper directories refresh when expanded and when the app is
-    /// reactivated (see the didBecomeActive observer).
-    private var monitors: [UUID: DispatchSourceFileSystemObject] = [:]
+    /// One recursive watcher per local source root.
+    private var monitors: [UUID: DirectoryWatcher] = [:]
 
     /// Which window's state receives externally opened documents (last key
     /// window; see KeyWindowTracker in ContentView).
@@ -211,7 +209,7 @@ final class AppModel: ObservableObject {
     func removeSource(_ id: UUID) {
         guard let index = sources.firstIndex(where: { $0.id == id }) else { return }
         let source = sources[index]
-        monitors[id]?.cancel()
+        monitors[id]?.stop()
         monitors[id] = nil
         sources.remove(at: index)
         childrenByDirectory = childrenByDirectory.filter { $0.key.sourceID != id }
@@ -455,27 +453,43 @@ final class AppModel: ObservableObject {
 
     // MARK: File-system monitoring
 
-    /// One watcher per source root. Deeper directories are re-read on expand
-    /// and on app activation instead of holding a descriptor each — a real
-    /// notes tree would otherwise cost hundreds of open files.
+    /// One recursive watcher per source root, so a file dropped into a
+    /// subfolder by Finder, a sync client or a git checkout appears straight
+    /// away rather than on the next reactivation.
     private func startMonitor(for source: Source) {
         guard source.kind == .localFolder else { return }
-        let descriptor = open(source.rootURL.path, O_EVTONLY)
-        guard descriptor >= 0 else { return }
-        let watcher = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: descriptor,
-            eventMask: [.write, .rename, .delete],
-            queue: .main)
         let id = source.id
-        watcher.setEventHandler { [weak self] in
-            MainActor.assumeIsolated {
-                self?.loadChildren(of: DocumentID(sourceID: id, path: ""), force: true)
+        monitors[id]?.stop()
+        monitors[id] = DirectoryWatcher(
+            root: source.rootURL,
+            onChange: { [weak self] directories in
+                self?.directoriesChanged(directories, in: id)
+            },
+            onRootLost: { [weak self] in
+                guard let self, let index = self.sources.firstIndex(where: { $0.id == id })
+                else { return }
+                self.sources[index].status =
+                    FileManager.default.fileExists(atPath: self.sources[index].rootURL.path)
+                    ? .ready : .missing
+            })
+    }
+
+    /// Reloads only the directories the sidebar has actually read. A change
+    /// deep inside a folder nobody has expanded needs no work — it will be
+    /// read correctly whenever it is first opened.
+    private func directoriesChanged(_ directories: [URL], in sourceID: UUID) {
+        guard let source = source(sourceID) else { return }
+        for directory in directories {
+            guard let id = source.documentID(for: directory) else { continue }
+            if childrenByDirectory[id] != nil {
+                loadChildren(of: id, force: true)
+            }
+            // A rename reports the *containing* directory for the new name but
+            // can leave the old entry's parent stale, so refresh that too.
+            if let parent = id.parent, childrenByDirectory[parent] != nil {
+                loadChildren(of: parent, force: true)
             }
         }
-        watcher.setCancelHandler { close(descriptor) }
-        watcher.resume()
-        monitors[id]?.cancel()
-        monitors[id] = watcher
     }
 
     // MARK: Persistence

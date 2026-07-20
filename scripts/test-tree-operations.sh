@@ -18,6 +18,7 @@ trap 'rm -rf "$BUILD"' EXIT
 
 swiftc -O \
   Sahifa/Models/Source.swift \
+  Sahifa/Models/DirectoryWatcher.swift \
   Sahifa/Models/DocumentModel.swift \
   Sahifa/Models/WindowState.swift \
   Sahifa/Models/AppModel.swift \

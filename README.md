@@ -40,7 +40,7 @@ on disk.
   Mono for code.
 - **Folders you add, browsed as a tree.** Add as many folders as you like;
   each stays in the sidebar and expands into its subfolders, loading them as
-  you open them. Files opened on their own sit under *Opened Files* instead of
+  you open them, and updating live when anything changes on disk. Files opened on their own sit under *Opened Files* instead of
   replacing what you were looking at.
 - **Plain `.md` files** in a folder you choose. No library format, no
   database, no accounts, no telemetry, no network calls.
