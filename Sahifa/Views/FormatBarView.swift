@@ -22,6 +22,7 @@ struct FormatBarView: View {
             .menuIndicator(.hidden)
             .fixedSize()
             .help(Text("Headings"))
+            .accessibilityLabel(Text("Headings"))
 
             barDivider
 
@@ -64,6 +65,10 @@ struct FormatBarView: View {
             .padding(.horizontal, 3)
     }
 
+    /// `.help` is a tooltip and a VoiceOver *hint*, not a name — without an
+    /// explicit label these icon-only buttons fall back to whatever the SF
+    /// Symbol happens to be called. The window toolbar already names its
+    /// buttons via `Label`; this keeps the two consistent.
     private func iconButton(_ symbol: String, _ help: LocalizedStringKey,
                             _ selector: Selector) -> some View {
         Button {
@@ -73,6 +78,7 @@ struct FormatBarView: View {
                 .frame(width: 22, height: 18)
         }
         .help(Text(help))
+        .accessibilityLabel(Text(help))
     }
 }
 

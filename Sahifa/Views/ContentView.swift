@@ -326,6 +326,7 @@ private struct ConflictBanner: View {
         HStack(spacing: 12) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(Color.gold)
+                .accessibilityHidden(true)   // the sentence beside it says this
             Text("This file changed on disk. Autosave is paused.")
                 .lineLimit(2)
             Spacer(minLength: 0)
