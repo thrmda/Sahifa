@@ -40,8 +40,9 @@ do {
     let id = testSource.documentID(for: url)!
     let first = testStore.version(of: id)
     check("a stored document has a version", first != nil)
+    let readBack = testStore.readImmediately(id)
     check("reading returns text and that version",
-          testStore.read(id).text == "one" && testStore.read(id).version == first)
+          readBack?.text == "one" && readBack?.version == first)
 
     let next = try! testStore.write("two", to: id, expecting: first)
     check("writing at the expected version moves it on", next != nil && next != first)

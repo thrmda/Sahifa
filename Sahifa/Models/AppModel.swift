@@ -125,13 +125,10 @@ final class AppModel: ObservableObject {
     private static let markdownTypes: [UTType] =
         [UTType(filenameExtension: "md"), UTType(filenameExtension: "markdown")].compactMap { $0 }
 
-    /// What counts as openable, for every path that takes a file from outside
-    /// the app (Finder, drag-drop). Matches the extensions declared in
-    /// `UTImportedTypeDeclarations`; keep the two in step.
-    static let markdownExtensions = ["md", "markdown", "mdown", "mkd", "mkdn"]
+    static let markdownExtensions = MarkdownFile.extensions
 
     static func isMarkdown(_ url: URL) -> Bool {
-        markdownExtensions.contains(url.pathExtension.lowercased())
+        MarkdownFile.matches(url.lastPathComponent)
     }
 
     static func isDirectory(_ url: URL) -> Bool {

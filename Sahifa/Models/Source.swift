@@ -124,6 +124,18 @@ struct Source: Identifiable, Hashable {
     }
 }
 
+/// What counts as an openable Markdown file. Lives here rather than on
+/// AppModel so a store can decide what to list without reaching for app state.
+/// Matches the extensions declared in `UTImportedTypeDeclarations`; keep the
+/// two in step.
+enum MarkdownFile {
+    static let extensions = ["md", "markdown", "mdown", "mkd", "mkdn"]
+
+    static func matches(_ name: String) -> Bool {
+        extensions.contains((name as NSString).pathExtension.lowercased())
+    }
+}
+
 /// One row in the sidebar tree.
 struct Node: Identifiable, Hashable {
     let id: DocumentID

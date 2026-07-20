@@ -39,6 +39,7 @@ swiftc -O \
   Sahifa/Models/Source.swift \
   Sahifa/Models/DirectoryWatcher.swift \
   Sahifa/Models/DocumentStore.swift \
+  Sahifa/Models/GitHubStore.swift \
   Sahifa/Models/DocumentModel.swift \
   Sahifa/Models/WindowState.swift \
   Sahifa/Models/AppModel.swift \

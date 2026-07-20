@@ -97,8 +97,7 @@ struct LocalFileStore: DocumentStore {
         for url in contents {
             let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?
                 .isDirectory ?? url.hasDirectoryPath
-            guard isDirectory || AppModel.markdownExtensions
-                    .contains(url.pathExtension.lowercased()) else { continue }
+            guard isDirectory || MarkdownFile.matches(url.lastPathComponent) else { continue }
             nodes.append(Node(id: id.appending(url.lastPathComponent),
                               name: url.lastPathComponent,
                               isDirectory: isDirectory))

@@ -102,9 +102,7 @@ struct GitHubStore: DocumentStore {
         }
         let nodes = entries.compactMap { entry -> Node? in
             let isDirectory = entry.type == "dir"
-            guard isDirectory || AppModel.markdownExtensions
-                    .contains((entry.name as NSString).pathExtension.lowercased())
-            else { return nil }
+            guard isDirectory || MarkdownFile.matches(entry.name) else { return nil }
             return Node(id: DocumentID(sourceID: sourceID, path: entry.path),
                         name: entry.name,
                         isDirectory: isDirectory)
