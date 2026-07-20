@@ -118,11 +118,19 @@ func fileOperations() async {
               window.selection == already, String(describing: window.selection))
     }
 
-    // Trash.
-    model.moveToTrash(docID("kept.markdown"))
-    check("move to trash removes the file", !exists("kept.markdown"))
+    // Delete (local → Trash).
+    await model.delete(docID("kept.markdown"))
+    check("delete removes the file", !exists("kept.markdown"))
     check("…and announced a deletion",
           moves.last?.from == docID("kept.markdown") && moves.last?.to == nil)
+    check("a local delete does not need confirming",
+          !model.deletionNeedsConfirmation(docID("renamed.md")))
+
+    // New file, through the store now.
+    let created = await model.newFile(in: docID(""))
+    check("a new file is created", created != nil, String(describing: created))
+    check("…and exists on disk",
+          created.map { exists(($0.path as NSString).lastPathComponent) } == true)
     _ = token
 }
 

@@ -87,6 +87,40 @@ func main() async {
     check("…and saving through it reaches the repository",
           (try? await store.read(scratch))?.text == "# Saved through the editor\n")
 
+    // Create, rename and delete through the same store the app uses.
+    let orgName = "sahifa-organise-\(getpid()).md"
+    let orgID = id(orgName)
+    let made = try? await store.write("# Organise check\n", to: orgID, expecting: nil)
+    check("a document can be created empty-then-written", made != nil)
+
+    let renamedName = "sahifa-organise-\(getpid())-renamed.md"
+    let renamedID = id(renamedName)
+    do {
+        try await store.move(orgID, to: renamedID)
+        check("a document can be moved to a new name", true)
+    } catch {
+        check("a document can be moved to a new name", false, "\(error)")
+    }
+    let atNew = try? await store.read(renamedID)
+    check("…the content is at the new name", atNew?.text == "# Organise check\n")
+    var oldGone = false
+    do { _ = try await store.read(orgID) }
+    catch RemoteStoreError.notFound { oldGone = true }
+    catch {}
+    check("…and the old name is gone", oldGone)
+
+    do {
+        try await store.delete(renamedID)
+        check("a document can be deleted", true)
+    } catch {
+        check("a document can be deleted", false, "\(error)")
+    }
+    var deletedGone = false
+    do { _ = try await store.read(renamedID) }
+    catch RemoteStoreError.notFound { deletedGone = true }
+    catch {}
+    check("…and it is really gone afterwards", deletedGone)
+
     // Remove the scratch document.
     if let last = try? await store.read(scratch), let version = last.version {
         var request = URLRequest(url: URL(string:

@@ -182,6 +182,39 @@ struct GitHubStore: DocumentStore {
         }
     }
 
+    func delete(_ id: DocumentID) async throws {
+        guard let token, !token.isEmpty else { throw RemoteStoreError.readOnly }
+        // GitHub needs the sha of exactly what is being removed.
+        let current = try await read(id)
+        guard let version = current.version else { throw RemoteStoreError.notFound }
+        var request = URLRequest(url: endpoint(for: id))
+        request.httpMethod = "DELETE"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30
+        var body: [String: Any] = ["message": "Delete \(id.name)", "sha": version.raw]
+        if let branch { body["branch"] = branch }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode) else {
+            throw RemoteStoreError.server(
+                status: (response as? HTTPURLResponse)?.statusCode ?? 0)
+        }
+    }
+
+    /// The contents API has no rename, so a move is the document written at
+    /// the new path and then removed from the old one. Deliberately in that
+    /// order: if the second step fails the document still exists twice, which
+    /// is recoverable, where the reverse order could lose it outright.
+    func move(_ id: DocumentID, to destination: DocumentID) async throws {
+        guard let token, !token.isEmpty else { throw RemoteStoreError.readOnly }
+        let current = try await read(id)
+        _ = try await write(current.text, to: destination, expecting: nil)
+        try await delete(id)
+    }
+
     private func readBlob(sha: String) async throws -> String {
         let url = URL(string:
             "https://api.github.com/repos/\(owner)/\(repository)/git/blobs/\(sha)")!

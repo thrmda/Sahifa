@@ -40,7 +40,8 @@ on disk.
   Mono for code.
 - **GitHub repositories.** Add a repository from the File menu and browse its
   Markdown alongside your local folders — files are fetched as you open them,
-  and edits save back. Public repositories can be read without an account;
+  edits save back, and you can create, rename and delete files in it too.
+  Public repositories can be read without an account;
   connect one in Settings → Accounts to reach private repositories and to save.
   The token is kept in the macOS Keychain. If someone else changes a file while
   you have it open, you get the same conflict prompt as for a local file.

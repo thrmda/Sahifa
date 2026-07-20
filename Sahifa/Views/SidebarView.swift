@@ -59,8 +59,10 @@ struct SidebarView: View {
                 .help(Text("Open File…"))
                 .accessibilityLabel(Text("Open File…"))
                 Button {
-                    if let id = model.newFile(in: windowState.newFileTarget) {
-                        windowState.selection = id
+                    Task {
+                        if let id = await model.newFile(in: windowState.newFileTarget) {
+                            windowState.selection = id
+                        }
                     }
                 } label: {
                     Image(systemName: "square.and.pencil")
@@ -204,9 +206,12 @@ private struct NodeLabel: View {
     @FocusState private var renameFieldFocused: Bool
 
     private var isLoose: Bool { node.id.sourceID == Source.looseFilesID }
-    /// Renaming, trashing and Reveal in Finder only mean something for a file
-    /// that actually exists on this Mac.
+    /// Reveal in Finder only means something for a file on this Mac.
     private var isLocal: Bool { model.source(node.id.sourceID)?.isLocal ?? false }
+    /// Rename, delete and New File Here work wherever the source is writable —
+    /// a local folder or a connected repository, but not loose files.
+    private var canOrganise: Bool { model.canOrganise(node.id) }
+    @State private var confirmingDelete = false
     private var isRenaming: Bool { windowState.renaming == node.id }
 
     var body: some View {
@@ -240,7 +245,7 @@ private struct NodeLabel: View {
         .padding(.vertical, 2)
         .contentShape(Rectangle())
         .contextMenu {
-            if !isLoose && isLocal {
+            if canOrganise {
                 Button("Rename…") { beginRename() }
             }
             if isLocal {
@@ -250,15 +255,16 @@ private struct NodeLabel: View {
                     }
                 }
             }
-            if node.isDirectory && isLocal {
+            if node.isDirectory && canOrganise {
                 Button("New File Here") {
-                    if let id = model.newFile(in: node.id) {
-                        windowState.expanded.insert(node.id)
-                        windowState.selection = id
+                    Task {
+                        if let id = await model.newFile(in: node.id) {
+                            windowState.expanded.insert(node.id)
+                            windowState.selection = id
+                        }
                     }
                 }
             }
-            if isLocal { Divider() }
             if isLoose {
                 // Its folder isn't in the sidebar, so "remove" here means stop
                 // listing it — deleting the file is the separate, louder verb.
@@ -266,10 +272,31 @@ private struct NodeLabel: View {
                     model.removeFromOpenedFiles(node.id)
                 }
             }
-            if isLocal {
-                Button("Move to Trash") { model.moveToTrash(node.id) }
+            if isLocal || canOrganise { Divider() }
+            if canOrganise {
+                Button(deleteTitle, role: .destructive) {
+                    if model.deletionNeedsConfirmation(node.id) {
+                        confirmingDelete = true
+                    } else {
+                        Task { await model.delete(node.id) }
+                    }
+                }
             }
         }
+        // A repository delete is a commit, not the Trash, so it confirms first.
+        .confirmationDialog(deletePrompt, isPresented: $confirmingDelete) {
+            Button("Delete", role: .destructive) {
+                Task { await model.delete(node.id) }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    private var deleteTitle: LocalizedStringKey {
+        model.deletionNeedsConfirmation(node.id) ? "Delete…" : "Move to Trash"
+    }
+    private var deletePrompt: Text {
+        Text("Delete \(node.name) from the repository? This is a commit, not the Trash.")
     }
 
     private func beginRename() {

@@ -87,8 +87,10 @@ struct ContentView: View {
                 }
                 .help(Text("Open File…"))
                 Button {
-                    if let id = model.newFile(in: windowState.newFileTarget) {
-                        windowState.selection = id
+                    Task {
+                        if let id = await model.newFile(in: windowState.newFileTarget) {
+                            windowState.selection = id
+                        }
                     }
                 } label: {
                     Label("New File", systemImage: "square.and.pencil")

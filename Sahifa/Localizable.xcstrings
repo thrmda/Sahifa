@@ -223,6 +223,36 @@
         }
       }
     },
+    "Delete": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "حذف"
+          }
+        }
+      }
+    },
+    "Delete %@ from the repository? This is a commit, not the Trash.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "حذف %@ من المستودع؟ هذه عملية إيداع (commit)، وليست نقلًا إلى المهملات."
+          }
+        }
+      }
+    },
+    "Delete…": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "حذف…"
+          }
+        }
+      }
+    },
     "Disconnect": {
       "localizations": {
         "ar": {

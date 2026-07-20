@@ -47,9 +47,23 @@ protocol DocumentStore: Sendable {
     /// Async because a networked store cannot answer synchronously. A local
     /// file still completes without ever suspending, so nothing waits on
     /// something that was already done.
+    ///
+    /// A nil `expecting` means "this should not exist yet", which is how a
+    /// document is created.
     @discardableResult
     func write(_ text: String, to id: DocumentID,
                expecting: VersionToken?) async throws -> VersionToken?
+
+    func delete(_ id: DocumentID) async throws
+
+    /// Moves a document, and everything under it when it's a folder.
+    func move(_ id: DocumentID, to destination: DocumentID) async throws
+}
+
+extension DocumentStore {
+    /// Creating, renaming and deleting all require writing, so one flag
+    /// governs the lot rather than each affordance guessing separately.
+    var canOrganise: Bool { !isReadOnly }
 }
 
 /// Reads and writes documents in one local folder.
@@ -126,5 +140,15 @@ struct LocalFileStore: DocumentStore {
         }
         try text.write(to: url(for: id), atomically: true, encoding: .utf8)
         return version(of: id)
+    }
+
+    /// The Trash rather than an unlink: recoverable, and what a Mac user
+    /// expects a delete to mean for a file on their own disk.
+    func delete(_ id: DocumentID) async throws {
+        try FileManager.default.trashItem(at: url(for: id), resultingItemURL: nil)
+    }
+
+    func move(_ id: DocumentID, to destination: DocumentID) async throws {
+        try FileManager.default.moveItem(at: url(for: id), to: url(for: destination))
     }
 }

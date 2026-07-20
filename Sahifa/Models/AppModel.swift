@@ -401,37 +401,49 @@ final class AppModel: ObservableObject {
         return pendingSelection
     }
 
-    /// Creates an empty Untitled file inside `directory` (a source root or any
-    /// folder in the tree) and returns its ID for the invoking window.
+    /// Creates an empty Untitled document in `directory` — a folder in any
+    /// writable source, local or remote. The free name is chosen from the
+    /// listing the sidebar already has rather than by asking the store, which
+    /// would be a request per attempt against a repository.
     @discardableResult
-    func newFile(in directory: DocumentID?) -> DocumentID? {
+    func newFile(in directory: DocumentID?) async -> DocumentID? {
         guard let target = directory ?? firstWritableDirectory(),
-              let source = source(target.sourceID), source.kind == .localFolder,
-              let folder = source.url(for: target)
+              let store = store(for: target.sourceID), !store.isReadOnly
         else { return nil }
+        loadChildren(of: target)
+        let taken = Set((children(of: target) ?? []).map(\.name))
         let base = String(localized: "Untitled")
         var name = "\(base).md"
         var counter = 2
-        while FileManager.default.fileExists(atPath: folder.appending(path: name).path) {
+        while taken.contains(name) {
             name = "\(base) \(counter).md"
             counter += 1
         }
+        let id = target.appending(name)
         do {
-            try "".write(to: folder.appending(path: name), atomically: true, encoding: .utf8)
+            _ = try await store.write("", to: id, expecting: nil)
         } catch {
+            directoryErrors[target] = error.localizedDescription
             return nil
         }
         loadChildren(of: target, force: true)
-        return target.appending(name)
+        return id
     }
 
     private func firstWritableDirectory() -> DocumentID? {
-        sources.first { $0.kind == .localFolder }
-            .map { DocumentID(sourceID: $0.id, path: "") }
+        sources.first { source in
+            source.kind != .looseFiles && store(for: source.id)?.isReadOnly == false
+        }
+        .map { DocumentID(sourceID: $0.id, path: "") }
     }
 
-    var canCreateFiles: Bool {
-        sources.contains { $0.kind == .localFolder }
+    var canCreateFiles: Bool { firstWritableDirectory() != nil }
+
+    /// Whether a document can be renamed or removed. Loose files are excluded:
+    /// they are listed by the app, not owned by a folder it manages.
+    func canOrganise(_ id: DocumentID) -> Bool {
+        guard let source = source(id.sourceID), source.kind != .looseFiles else { return false }
+        return store(for: id.sourceID)?.isReadOnly == false
     }
 
     func saveAll() {
@@ -471,49 +483,62 @@ final class AppModel: ObservableObject {
     func rename(_ id: DocumentID, to proposed: String) async -> DocumentID? {
         let trimmed = proposed.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !trimmed.contains("/"), !trimmed.hasPrefix("."),
-              let source = source(id.sourceID), source.kind == .localFolder,
+              canOrganise(id), let store = store(for: id.sourceID),
               let parent = id.parent
         else { return nil }
 
-        guard let oldURL = source.url(for: id) else { return nil }
         var name = trimmed
         if (name as NSString).pathExtension.isEmpty {
             let existing = (id.path as NSString).pathExtension
             if !existing.isEmpty { name += ".\(existing)" }
         }
         guard name != id.name else { return nil }
-        guard let parentURL = source.url(for: parent) else { return nil }
-        let newURL = parentURL.appending(path: name)
-        guard !FileManager.default.fileExists(atPath: newURL.path) else { return nil }
+        let taken = Set((children(of: parent) ?? []).map(\.name))
+        guard !taken.contains(name) else { return nil }
 
-        // Flush pending edits before the file moves out from under them.
+        // Flush pending edits before the document moves out from under them.
         await documentCache[id]?.flush()
+        let newID = parent.appending(name)
         do {
-            try FileManager.default.moveItem(at: oldURL, to: newURL)
+            try await store.move(id, to: newID)
         } catch {
+            directoryErrors[parent] = error.localizedDescription
             return nil
         }
-        let newID = parent.appending(name)
         relocate(from: id, to: newID)
         loadChildren(of: parent, force: true)
         return newID
     }
 
-    /// Moves to Trash rather than deleting: recoverable, and the macOS
-    /// convention, which is also why there's no confirmation prompt.
-    func moveToTrash(_ id: DocumentID) {
-        guard let source = source(id.sourceID), let url = self.url(for: id) else { return }
-        if source.kind == .looseFiles {
-            // Trashing it should also stop it being listed.
+    /// Removes a document. A local file goes to the Trash — recoverable, and
+    /// what a Mac user expects, which is why nothing asks first. A document in
+    /// a repository is removed by a commit instead: still recoverable, but
+    /// only through git, so the caller asks first.
+    func delete(_ id: DocumentID) async {
+        guard let source = source(id.sourceID), let store = store(for: id.sourceID)
+        else { return }
+        if source.kind == .looseFiles, let url = self.url(for: id) {
+            // Removing it should also stop it being listed.
             looseFiles.removeAll { $0.standardizedFileURL == url.standardizedFileURL }
         }
-        try? FileManager.default.trashItem(at: url, resultingItemURL: nil)
+        do {
+            try await store.delete(id)
+        } catch {
+            if let parent = id.parent { directoryErrors[parent] = error.localizedDescription }
+            return
+        }
         relocate(from: id, to: nil)
         if source.kind == .looseFiles {
             refreshLooseFiles()
         } else if let parent = id.parent {
             loadChildren(of: parent, force: true)
         }
+    }
+
+    /// True when removing this document is not undoable from the Finder — a
+    /// repository commit rather than the Trash, so the UI asks first.
+    func deletionNeedsConfirmation(_ id: DocumentID) -> Bool {
+        source(id.sourceID)?.isLocal == false
     }
 
     /// Loose files only: stop listing it without touching the file itself.

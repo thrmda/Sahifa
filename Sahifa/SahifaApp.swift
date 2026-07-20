@@ -76,8 +76,10 @@ struct SahifaCommands: Commands {
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
             Button("New File") {
-                if let id = model.newFile(in: windowState?.newFileTarget) {
-                    windowState?.selection = id
+                Task {
+                    if let id = await model.newFile(in: windowState?.newFileTarget) {
+                        windowState?.selection = id
+                    }
                 }
             }
             .keyboardShortcut("n", modifiers: .command)
