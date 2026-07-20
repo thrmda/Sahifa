@@ -119,12 +119,21 @@ private struct SourceDisclosure: View {
                         .help(Text("Read-only repository"))
                         .accessibilityLabel(Text("Read-only repository"))
                 }
-                if source.status == .missing {
+                switch source.status {
+                case .ready:
+                    EmptyView()
+                case .missing:
                     Image(systemName: "exclamationmark.triangle.fill")
                         .imageScale(.small)
                         .foregroundStyle(Color.gold)
                         .help(Text("This folder is missing"))
                         .accessibilityLabel(Text("This folder is missing"))
+                case .needsSignIn:
+                    Image(systemName: "person.crop.circle.badge.exclamationmark")
+                        .imageScale(.small)
+                        .foregroundStyle(Color.gold)
+                        .help(Text("Sign-in needed — reconnect in Settings"))
+                        .accessibilityLabel(Text("Sign-in needed — reconnect in Settings"))
                 }
             }
             .contextMenu {

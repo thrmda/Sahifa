@@ -270,10 +270,21 @@ final class AppModel: ObservableObject {
                 self.loadingDirectories.remove(id)
             } catch {
                 guard let self else { return }
+                // A refused credential is an account problem, not a folder
+                // problem — say so on the account so every source reflects it.
+                if case RemoteStoreError.notAuthorised = error {
+                    GitHubAccount.shared.markRefused()
+                    self.markNeedsSignIn(sourceID: id.sourceID)
+                }
                 self.directoryErrors[id] = error.localizedDescription
                 self.loadingDirectories.remove(id)
             }
         }
+    }
+
+    private func markNeedsSignIn(sourceID: UUID) {
+        guard let index = sources.firstIndex(where: { $0.id == sourceID }) else { return }
+        sources[index].status = .needsSignIn
     }
 
     /// Adds a GitHub repository as a source. Read-only for now, and read
@@ -361,7 +372,7 @@ final class AppModel: ObservableObject {
                                owner: repository.owner,
                                repository: repository.name,
                                branch: repository.branch,
-                               token: nil)
+                               token: GitHubAccount.shared.token)
         }
     }
 

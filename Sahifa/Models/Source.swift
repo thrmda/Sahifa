@@ -75,6 +75,9 @@ struct Source: Identifiable, Hashable {
         case ready
         /// Resolved, but the folder is gone (moved, renamed, unmounted).
         case missing
+        /// The credential was refused: expired, revoked, or its access to this
+        /// repository withdrawn.
+        case needsSignIn
     }
 
     let id: UUID

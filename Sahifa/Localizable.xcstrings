@@ -11,6 +11,16 @@
         }
       }
     },
+    "Accounts": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الحسابات"
+          }
+        }
+      }
+    },
     "Add": {
       "localizations": {
         "ar": {
@@ -102,6 +112,16 @@
         }
       }
     },
+    "Checking…": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "جارٍ التحقق…"
+          }
+        }
+      }
+    },
     "Choose a Markdown file from the sidebar.": {
       "extractionState": "manual",
       "localizations": {
@@ -129,6 +149,66 @@
           "stringUnit": {
             "state": "translated",
             "value": "كتلة برمجية"
+          }
+        }
+      }
+    },
+    "Connect": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اتصال"
+          }
+        }
+      }
+    },
+    "Connect GitHub": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الاتصال بـ GitHub"
+          }
+        }
+      }
+    },
+    "Connect…": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اتصال…"
+          }
+        }
+      }
+    },
+    "Create a fine-grained token limited to the repositories you want Sahifa to reach, with Contents set to Read and write. Give it a short expiry — you can always make another.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "أنشئ رمزًا دقيق الصلاحيات مقصورًا على المستودعات التي تريد أن تصل إليها صحيفة، مع ضبط Contents على القراءة والكتابة. اجعل مدته قصيرة — يمكنك دائمًا إنشاء غيره."
+          }
+        }
+      }
+    },
+    "Create a token on GitHub…": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إنشاء رمز في GitHub…"
+          }
+        }
+      }
+    },
+    "Disconnect": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "قطع الاتصال"
           }
         }
       }
@@ -512,6 +592,16 @@
         }
       }
     },
+    "Not connected. Public repositories can still be read.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "غير متصل. لا يزال بالإمكان قراءة المستودعات العامة."
+          }
+        }
+      }
+    },
     "Not found on the server.": {
       "localizations": {
         "ar": {
@@ -614,6 +704,16 @@
         }
       }
     },
+    "Paste the token here": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الصق الرمز هنا"
+          }
+        }
+      }
+    },
     "Quote": {
       "localizations": {
         "ar": {
@@ -640,6 +740,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "للقراءة فقط. الحفظ في هذا المصدر غير مدعوم بعد."
+          }
+        }
+      }
+    },
+    "Reconnect…": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إعادة الاتصال…"
           }
         }
       }
@@ -735,6 +845,16 @@
         }
       }
     },
+    "Sign-in needed — reconnect in Settings": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "يلزم تسجيل الدخول — أعد الاتصال من الإعدادات"
+          }
+        }
+      }
+    },
     "Strikethrough": {
       "localizations": {
         "ar": {
@@ -772,6 +892,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "هذا المسار ليس مجلدًا."
+          }
+        }
+      }
+    },
+    "The token is kept in your Mac's Keychain.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "يُحفظ الرمز في سلسلة مفاتيح الماك."
           }
         }
       }
