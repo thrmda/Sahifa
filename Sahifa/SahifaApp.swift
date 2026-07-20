@@ -51,7 +51,9 @@ struct SahifaApp: App {
 /// App menus. File/document actions target the focused window's state so
 /// every window (or tab) behaves independently.
 struct SahifaCommands: Commands {
-    let model: AppModel
+    // Observed, not just held: the Open Recent menu has to rebuild as the
+    // list changes.
+    @ObservedObject var model: AppModel
     @FocusedObject private var windowState: WindowState?
     @Environment(\.openWindow) private var openWindow
     @AppStorage("focusMode") private var focusMode = false
@@ -73,6 +75,24 @@ struct SahifaCommands: Commands {
                 .keyboardShortcut("o", modifiers: .command)
             Button("Open Folder…") { model.chooseFolder() }
                 .keyboardShortcut("o", modifiers: [.command, .shift])
+            Menu("Open Recent") {
+                ForEach(model.recentFolders) { item in
+                    Button(recentLabel(item, among: model.recentFolders)) {
+                        model.openRecent(item)
+                    }
+                }
+                if !model.recentFolders.isEmpty && !model.recentFiles.isEmpty {
+                    Divider()
+                }
+                ForEach(model.recentFiles) { item in
+                    Button(recentLabel(item, among: model.recentFiles)) {
+                        model.openRecent(item)
+                    }
+                }
+                Divider()
+                Button("Clear Menu") { model.clearRecents() }
+            }
+            .disabled(model.recentItems.isEmpty)
         }
         CommandGroup(after: .saveItem) {
             Button("Save") { model.saveAll() }
@@ -152,6 +172,15 @@ struct SahifaCommands: Commands {
 /// Sends a formatting selector down the responder chain to the focused editor.
 private func send(_ selector: Selector) {
     NSApp.sendAction(selector, to: nil, from: nil)
+}
+
+/// Menu title for a recent item: its own name, qualified by the enclosing
+/// folder only when that name appears more than once — two files both called
+/// `notes.md` are otherwise indistinguishable.
+private func recentLabel(_ item: AppModel.RecentItem,
+                         among items: [AppModel.RecentItem]) -> String {
+    guard items.filter({ $0.name == item.name }).count > 1 else { return item.name }
+    return "\(item.name) — \(item.parentName)"
 }
 
 extension View {

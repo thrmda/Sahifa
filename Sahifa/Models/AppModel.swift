@@ -14,6 +14,7 @@ final class AppModel: ObservableObject {
 
     @Published private(set) var workspaceURL: URL?
     @Published private(set) var files: [URL] = []
+    @Published private(set) var recentItems: [RecentItem] = []
 
     /// One DocumentModel per file, shared by every window showing it.
     private var documentCache: [URL: DocumentModel] = [:]
@@ -38,6 +39,8 @@ final class AppModel: ObservableObject {
     let workspaceDidChange = PassthroughSubject<Void, Never>()
 
     init() {
+        // Before restoreWorkspace, which reads the recent files back out.
+        recentItems = loadRecents()
         // Dev convenience: `Sahifa -workspace /path` opens a folder or a
         // single Markdown file directly (useful for testing; under the
         // sandbox, arbitrary paths only resolve when access is otherwise
@@ -118,13 +121,8 @@ final class AppModel: ObservableObject {
             ?? url.hasDirectoryPath
         if isDirectory {
             UserDefaults.standard.set(bookmark, forKey: Self.bookmarkKey)
-        } else {
-            var recent = UserDefaults.standard.array(forKey: Self.fileBookmarksKey) as? [Data] ?? []
-            recent.removeAll { $0 == bookmark }
-            recent.append(bookmark)
-            UserDefaults.standard.set(recent.suffix(Self.maxRecentFiles).map { $0 },
-                                      forKey: Self.fileBookmarksKey)
         }
+        rememberRecent(RecentItem(bookmark: bookmark, path: url.path, isDirectory: isDirectory))
     }
 
     private static let markdownTypes: [UTType] =
@@ -192,9 +190,86 @@ final class AppModel: ObservableObject {
         return pendingSelection
     }
 
-    private static let fileBookmarksKey = "recentFileBookmarks"
+    private static let recentItemsKey = "recentItems"
     private static let lastOpenedKey = "lastOpenedBookmark"
-    private static let maxRecentFiles = 10
+    private static let maxRecentItems = 12
+
+    // MARK: Recent items (File ▸ Open Recent)
+
+    /// Newest first. Folders belong here as much as files — a folder is this
+    /// app's unit of work, so "reopen the folder I was in last week" is the
+    /// common case and reopening a single file the exception.
+    struct RecentItem: Identifiable, Codable, Equatable {
+        let bookmark: Data
+        /// Kept beside the bookmark purely so the menu can be drawn without
+        /// resolving every entry — resolving opens a sandbox scope per item,
+        /// which is far too much work for showing a list of names. Treated as
+        /// display-only: it may be stale, and opening always goes through the
+        /// bookmark.
+        let path: String
+        let isDirectory: Bool
+
+        var id: String { path }
+        var url: URL { URL(fileURLWithPath: path) }
+        var name: String { url.lastPathComponent }
+        var parentName: String { url.deletingLastPathComponent().lastPathComponent }
+    }
+
+    var recentFolders: [RecentItem] { recentItems.filter(\.isDirectory) }
+    var recentFiles: [RecentItem] { recentItems.filter { !$0.isDirectory } }
+
+    private func rememberRecent(_ item: RecentItem) {
+        var items = recentItems.filter { $0.path != item.path }
+        items.insert(item, at: 0)
+        recentItems = Array(items.prefix(Self.maxRecentItems))
+        persistRecents()
+    }
+
+    private func loadRecents() -> [RecentItem] {
+        guard let data = UserDefaults.standard.data(forKey: Self.recentItemsKey),
+              let items = try? JSONDecoder().decode([RecentItem].self, from: data)
+        else { return [] }
+        return items
+    }
+
+    private func persistRecents() {
+        guard let data = try? JSONEncoder().encode(recentItems) else { return }
+        UserDefaults.standard.set(data, forKey: Self.recentItemsKey)
+    }
+
+    /// Opens a menu entry. An entry whose file has since been moved, deleted,
+    /// or had its grant revoked drops off the list rather than failing
+    /// silently every time it's picked.
+    func openRecent(_ item: RecentItem) {
+        var stale = false
+        guard let url = try? URL(resolvingBookmarkData: item.bookmark,
+                                 options: .withSecurityScope,
+                                 relativeTo: nil,
+                                 bookmarkDataIsStale: &stale),
+              url.startAccessingSecurityScopedResource()
+        else {
+            forgetRecent(item)
+            return
+        }
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            url.stopAccessingSecurityScopedResource()
+            forgetRecent(item)
+            return
+        }
+        // Scope stays open: whatever this is, it's now the workspace or a
+        // listed file, and it's needed for as long as the app is running.
+        openExternal([url])
+    }
+
+    func clearRecents() {
+        recentItems = []
+        persistRecents()
+    }
+
+    private func forgetRecent(_ item: RecentItem) {
+        recentItems.removeAll { $0.path == item.path }
+        persistRecents()
+    }
 
     private func restoreWorkspace() {
         // Reading a bookmark's file requires its security scope to be open, so
@@ -207,12 +282,12 @@ final class AppModel: ObservableObject {
         if let folderData, let url = resolveBookmark(folderData, opened: &opened) {
             openItem(url)
         }
-        // Only recent files living in the restored workspace get listed (oldest
-        // first, so the newest ends up as `defaultSelection`).
-        let recent = UserDefaults.standard.array(forKey: Self.fileBookmarksKey) as? [Data] ?? []
+        // Only recent files living in the restored workspace get listed.
+        // `recentItems` is newest-first; reversed so the newest is appended
+        // last and ends up as `defaultSelection`.
         var existing: [URL] = []
-        for data in recent {
-            guard let url = resolveBookmark(data, opened: &opened),
+        for item in recentFiles.reversed() {
+            guard let url = resolveBookmark(item.bookmark, opened: &opened),
                   FileManager.default.fileExists(atPath: url.path) else { continue }
             existing.append(url)
         }

@@ -43,6 +43,16 @@
         }
       }
     },
+    "Clear Menu": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مسح القائمة"
+          }
+        }
+      }
+    },
     "Code Block": {
       "localizations": {
         "ar": {
@@ -389,6 +399,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "فتح مجلد…"
+          }
+        }
+      }
+    },
+    "Open Recent": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فتح الأخيرة"
           }
         }
       }

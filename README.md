@@ -82,6 +82,7 @@ English/Arabic document and an Arabic-named file.
 | --- | --- |
 | Open File… | ⌘O |
 | Open Folder… (workspace) | ⇧⌘O |
+| Open Recent (folders and files) | File menu |
 | New file | ⌘N |
 | New window | ⇧⌘N |
 | New tab | ⌘T |
