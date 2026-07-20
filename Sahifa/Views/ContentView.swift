@@ -107,12 +107,12 @@ struct ContentView: View {
         Divider()
             .frame(width: 9)
             .contentShape(Rectangle())
-            .onHover { inside in
-                if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
-            }
+            .pointerCursor(.resizeLeftRight)
             .gesture(
                 DragGesture(coordinateSpace: .global)
                     .onChanged { value in
+                        // Cursor rects are suspended mid-drag, so hold it here.
+                        NSCursor.resizeLeftRight.set()
                         let base = dragStartSidebarWidth ?? sidebarWidth
                         dragStartSidebarWidth = base
                         // translation is physical; in RTL chrome the sidebar
@@ -203,13 +203,12 @@ private struct EditorPreviewSplit: View {
         Divider()
             .frame(width: 9)
             .contentShape(Rectangle())
-            .onHover { inside in
-                if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
-            }
+            .pointerCursor(.resizeLeftRight)
             .gesture(
                 DragGesture(coordinateSpace: .global)
                     .onChanged { value in
                         guard containerWidth > Self.minEditor + Self.minPreview else { return }
+                        NSCursor.resizeLeftRight.set()
                         let base = dragStartFraction ?? previewFraction
                         dragStartFraction = base
                         // translation is physical; in RTL chrome the editor

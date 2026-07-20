@@ -51,6 +51,7 @@ struct SidebarView: View {
                 }
                 .help(Text("Add Folder…"))
                 .accessibilityLabel(Text("Add Folder…"))
+                .pointerCursor(.pointingHand)
                 Button {
                     model.chooseFile()
                 } label: {
@@ -58,6 +59,7 @@ struct SidebarView: View {
                 }
                 .help(Text("Open File…"))
                 .accessibilityLabel(Text("Open File…"))
+                .pointerCursor(.pointingHand)
                 Button {
                     Task {
                         if let id = await model.newFile(in: windowState.newFileTarget) {
@@ -70,6 +72,7 @@ struct SidebarView: View {
                 .disabled(!model.canCreateFiles)
                 .help(Text("New File"))
                 .accessibilityLabel(Text("New File"))
+                .pointerCursor(.pointingHand)
                 Spacer(minLength: 0)
             }
             .buttonStyle(.borderless)
@@ -79,6 +82,9 @@ struct SidebarView: View {
             .background(Color.sand)
         }
     }
+
+    // Note: the footer buttons get the pointing hand individually below rather
+    // than on the row, so the gaps between them keep the arrow.
 
     private var emptyState: some View {
         VStack(spacing: 12) {

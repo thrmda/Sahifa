@@ -30,6 +30,7 @@ struct StatusBarView: View {
             .buttonStyle(.borderless)
             .help(Text("Toggle Sidebar"))
             .accessibilityLabel(Text("Toggle Sidebar"))
+            .pointerCursor(.pointingHand)
             Text("Words: \(counts?.words ?? 0)")
             Text("Characters: \(counts?.characters ?? 0)")
             if isSaving {
@@ -54,6 +55,7 @@ struct StatusBarView: View {
             .buttonStyle(.borderless)
             .help(showFormatBar ? Text("Hide Format Bar") : Text("Show Format Bar"))
             .accessibilityLabel(showFormatBar ? Text("Hide Format Bar") : Text("Show Format Bar"))
+            .pointerCursor(.pointingHand)
             Button {
                 focusMode.toggle()
             } label: {
@@ -62,6 +64,7 @@ struct StatusBarView: View {
             .buttonStyle(.borderless)
             .help(focusMode ? Text("Exit Focus Mode") : Text("Focus Mode"))
             .accessibilityLabel(focusMode ? Text("Exit Focus Mode") : Text("Focus Mode"))
+            .pointerCursor(.pointingHand)
             Button {
                 showPreview.toggle()
             } label: {
@@ -72,6 +75,7 @@ struct StatusBarView: View {
             .buttonStyle(.borderless)
             .help(showPreview ? Text("Hide Preview") : Text("Show Preview"))
             .accessibilityLabel(showPreview ? Text("Hide Preview") : Text("Show Preview"))
+            .pointerCursor(.pointingHand)
         }
         .font(.custom("IBMPlexSans", size: 11))
         .foregroundStyle(Color.slate)

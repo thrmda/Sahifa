@@ -23,6 +23,7 @@ struct FormatBarView: View {
             .fixedSize()
             .help(Text("Headings"))
             .accessibilityLabel(Text("Headings"))
+            .pointerCursor(.pointingHand)
 
             barDivider
 
@@ -79,6 +80,7 @@ struct FormatBarView: View {
         }
         .help(Text(help))
         .accessibilityLabel(Text(help))
+        .pointerCursor(.pointingHand)
     }
 }
 
