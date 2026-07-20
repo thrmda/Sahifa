@@ -27,10 +27,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard AppModel.shared.hasPendingSaves else { return .terminateNow }
             Task {
                 await AppModel.shared.flushAll()
-                NSApp.reply(toApplicationShouldTerminate: true)
+                // A local save always lands, so anything still unsaved here is a
+                // remote save that couldn't reach the server. Quitting would
+                // drop it, so ask rather than lose work silently.
+                let stranded = AppModel.shared.documentsWithUnsavedChanges
+                let reply = stranded.isEmpty || Self.confirmQuitWithUnsaved(stranded)
+                NSApp.reply(toApplicationShouldTerminate: reply)
             }
             return .terminateLater
         }
+    }
+
+    @MainActor
+    private static func confirmQuitWithUnsaved(_ documents: [DocumentModel]) -> Bool {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        let names = documents.map(\.displayName).joined(separator: ", ")
+        alert.messageText = documents.count == 1
+            ? String(localized: "“\(names)” has unsaved changes that couldn't be saved.")
+            : String(localized: "\(documents.count) documents have unsaved changes that couldn't be saved.")
+        alert.informativeText = String(localized:
+            "The server couldn't be reached. If you quit now, these changes are lost.")
+        alert.addButton(withTitle: String(localized: "Quit Anyway"))
+        alert.addButton(withTitle: String(localized: "Don't Quit"))
+        return alert.runModal() == .alertFirstButtonReturn
     }
 }
 

@@ -34,11 +34,31 @@ final class DocumentModel: ObservableObject, Identifiable {
     /// Browsable but not savable — a repository with no credential.
     var isReadOnly: Bool { store.isReadOnly }
 
-    /// A save is in flight. Instant for a local file; long enough to matter
+    /// Where a save is in its life. Distinct from a conflict, which needs a
+    /// decision — these states resolve on their own or with one retry.
+    ///   idle     nothing outstanding
+    ///   saving   a write is in flight
+    ///   retrying the last write failed for a reason likely to pass (offline,
+    ///            timeout, server hiccup); edits are held and it tries again
+    ///   failed   the last write failed for a reason a retry won't fix on its
+    ///            own (the token lost access); the edits are still held
+    enum SaveStatus: Equatable {
+        case idle
+        case saving
+        case retrying
+        case failed
+    }
+    @Published private(set) var saveStatus: SaveStatus = .idle
+
+    /// A write is in flight. Instant for a local file; long enough to matter
     /// for anything sent over a network, and the reason quitting waits.
-    @Published private(set) var isSaving = false
+    var isSaving: Bool { saveStatus == .saving }
 
     private var saveTask: Task<Void, Never>?
+    private var retryTask: Task<Void, Never>?
+    private static let initialRetryNanos: UInt64 = 2_000_000_000    // 2 s
+    private static let maxRetryNanos: UInt64 = 30_000_000_000       // 30 s
+    private var retryDelayNanos: UInt64 = DocumentModel.initialRetryNanos
     var hasUnsavedChanges: Bool { text != savedText }
 
     private let store: any DocumentStore
@@ -114,6 +134,21 @@ final class DocumentModel: ObservableObject, Identifiable {
         await write()
     }
 
+    /// Try a failed save again now, rather than waiting out the backoff — the
+    /// Retry button, and what a returning network is worth a shot at.
+    func retrySave() {
+        guard saveStatus == .retrying || saveStatus == .failed else { return }
+        retryDelayNanos = Self.initialRetryNanos
+        retryTask?.cancel()
+        saveTask = Task { [weak self] in await self?.write() }
+    }
+
+    /// Called when the app regains focus — the network is most likely back, so
+    /// a stalled save is worth another immediate attempt.
+    func resumeSaving() {
+        if saveStatus == .retrying || saveStatus == .failed { retrySave() }
+    }
+
     /// Picks up edits made by other programs. A document with nothing unsaved
     /// simply follows the file; one with unsaved edits raises a conflict
     /// rather than picking a winner on the user's behalf.
@@ -153,8 +188,9 @@ final class DocumentModel: ObservableObject, Identifiable {
     // MARK: Reading and writing
 
     private func write() async {
-        isSaving = true
-        defer { isSaving = false }
+        // A fresh attempt supersedes any scheduled retry.
+        retryTask?.cancel()
+        saveStatus = .saving
         let attempted = text
         do {
             version = try await store.write(attempted, to: id, expecting: version)
@@ -163,10 +199,52 @@ final class DocumentModel: ObservableObject, Identifiable {
             if text == attempted { savedText = attempted }
             hasConflict = false
             lastError = nil
+            saveStatus = .idle
+            retryDelayNanos = Self.initialRetryNanos
         } catch DocumentStoreError.versionConflict {
+            // A conflict is a decision, not a retry — the banner takes over and
+            // autosave stays paused until it's resolved.
             hasConflict = true
+            saveStatus = .idle
         } catch {
+            // The edits stay unsaved (savedText is untouched), so nothing is
+            // lost. Retryable failures schedule another attempt; the rest wait
+            // for the user, but still hold the text.
             lastError = error.localizedDescription
+            if Self.isRetryable(error) {
+                saveStatus = .retrying
+                scheduleRetry()
+            } else {
+                saveStatus = .failed
+            }
+        }
+    }
+
+    /// Failures worth retrying on their own: the network being down or slow,
+    /// and the server being briefly unwell. A refused credential or a missing
+    /// path won't fix itself by waiting, so those surface and hold instead.
+    private static func isRetryable(_ error: Error) -> Bool {
+        if error is URLError { return true }
+        switch error {
+        case RemoteStoreError.rateLimited:
+            return true
+        case RemoteStoreError.server(let status) where status == 0 || status >= 500:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func scheduleRetry() {
+        let delay = retryDelayNanos
+        retryDelayNanos = min(retryDelayNanos * 2, Self.maxRetryNanos)   // back off
+        retryTask?.cancel()
+        retryTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: delay)
+            guard let self, !Task.isCancelled else { return }
+            guard self.saveStatus == .retrying, self.hasUnsavedChanges, !self.hasConflict
+            else { return }
+            await self.write()
         }
     }
 

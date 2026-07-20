@@ -9,10 +9,12 @@ import SwiftUI
 /// twice a 60 Hz frame, and the editor is already restyling on that keystroke.
 struct StatusBarView: View {
     let text: String
-    var errorMessage: String?
     /// Shown only while a save is actually in flight. A local save finishes
     /// too fast to ever appear; one going over a network is worth seeing.
     var isSaving: Bool = false
+    /// A save failed and is waiting to try again. The banner explains it; this
+    /// is the quiet reminder once the banner has been read.
+    var isRetrying: Bool = false
     @Binding var showPreview: Bool
     @AppStorage("focusMode") private var focusMode = false
     @AppStorage("showFormatBar") private var showFormatBar = true
@@ -35,11 +37,9 @@ struct StatusBarView: View {
             Text("Characters: \(counts?.characters ?? 0)")
             if isSaving {
                 Text("Saving…")
-            }
-            if let errorMessage {
-                Text(verbatim: errorMessage)
-                    .foregroundStyle(.red)
-                    .lineLimit(1)
+            } else if isRetrying {
+                Text("Save pending…")
+                    .foregroundStyle(Color.gold)
             }
             Spacer(minLength: 0)
             Button {

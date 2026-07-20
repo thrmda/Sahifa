@@ -203,6 +203,26 @@
         }
       }
     },
+    "Couldn't save — your changes are kept and Sahifa is retrying.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تعذّر الحفظ — تغييراتك محفوظة وتحاول صحيفة مجددًا."
+          }
+        }
+      }
+    },
+    "Couldn't save — your changes are kept. Check your connection or sign-in.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تعذّر الحفظ — تغييراتك محفوظة. تحقق من اتصالك أو تسجيل دخولك."
+          }
+        }
+      }
+    },
     "Create a fine-grained token limited to the repositories you want Sahifa to reach, with Contents set to Read and write. Give it a short expiry — you can always make another.": {
       "localizations": {
         "ar": {
@@ -259,6 +279,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "قطع الاتصال"
+          }
+        }
+      }
+    },
+    "Don't Quit": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "عدم الخروج"
           }
         }
       }
@@ -764,6 +794,16 @@
         }
       }
     },
+    "Quit Anyway": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الخروج على أي حال"
+          }
+        }
+      }
+    },
     "Quote": {
       "localizations": {
         "ar": {
@@ -844,6 +884,16 @@
         }
       }
     },
+    "Retry Now": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إعادة المحاولة الآن"
+          }
+        }
+      }
+    },
     "Reveal in Finder": {
       "localizations": {
         "ar": {
@@ -861,6 +911,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "حفظ"
+          }
+        }
+      }
+    },
+    "Save pending…": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "في انتظار الحفظ…"
           }
         }
       }
@@ -952,6 +1012,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "هذا المسار ليس مجلدًا."
+          }
+        }
+      }
+    },
+    "The server couldn't be reached. If you quit now, these changes are lost.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تعذّر الوصول إلى الخادم. إذا خرجت الآن، ستُفقد هذه التغييرات."
           }
         }
       }

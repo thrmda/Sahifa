@@ -83,6 +83,8 @@ final class AppModel: ObservableObject {
                 guard let self else { return }
                 for document in self.documentCache.values {
                     document.reconcileWithDisk()
+                    // The network is most likely back — nudge any stalled save.
+                    document.resumeSaving()
                 }
                 self.refreshLoadedDirectories()
             }
@@ -455,6 +457,13 @@ final class AppModel: ObservableObject {
     /// Anything still to be written — asked before letting the app quit.
     var hasPendingSaves: Bool {
         documentCache.values.contains { $0.isSaving || $0.hasUnsavedChanges }
+    }
+
+    /// Documents with edits that still aren't saved. After `flushAll` this can
+    /// only be a remote save that failed — a local write always succeeds — so
+    /// it's what a quit-time warning is about.
+    var documentsWithUnsavedChanges: [DocumentModel] {
+        documentCache.values.filter { $0.hasUnsavedChanges }
     }
 
     /// Awaits every outstanding save. A local file finishes immediately; a

@@ -339,6 +339,34 @@ private struct DocumentPlaceholder: View {
     }
 }
 
+/// A save that couldn't reach the server. The edits are held, not lost — this
+/// says so, shows whether it's retrying on its own or waiting, and offers an
+/// immediate retry. Distinct from the conflict banner, which needs a choice;
+/// this one just needs the network back.
+private struct SaveFailedBanner: View {
+    @ObservedObject var document: DocumentModel
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.trianglehead.2.clockwise.rotate.90")
+                .foregroundStyle(Color.gold)
+                .accessibilityHidden(true)
+            if document.saveStatus == .retrying {
+                Text("Couldn't save — your changes are kept and Sahifa is retrying.")
+            } else {
+                Text("Couldn't save — your changes are kept. Check your connection or sign-in.")
+            }
+            Spacer(minLength: 0)
+            Button("Retry Now") { document.retrySave() }
+        }
+        .font(.custom("IBMPlexSans", size: 12))
+        .foregroundStyle(Color.slate)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(Color.sand)
+    }
+}
+
 /// Says plainly that edits won't be saved, rather than letting someone type
 /// into a document that silently discards their work.
 private struct ReadOnlyBanner: View {
@@ -448,6 +476,11 @@ struct DocumentEditorView: View {
                 ReadOnlyBanner()
                 Divider()
             }
+            if !document.hasConflict,
+               document.saveStatus == .retrying || document.saveStatus == .failed {
+                SaveFailedBanner(document: document)
+                Divider()
+            }
             // Not HSplitView: it keeps the divider at an absolute offset, so
             // shrinking the window clips panes/crushes the sidebar and
             // entering full screen dumps all new width into one pane. This
@@ -467,8 +500,9 @@ struct DocumentEditorView: View {
                                    showPreview: windowState.showPreview)
             }
             Divider()
-            StatusBarView(text: document.text, errorMessage: document.lastError,
+            StatusBarView(text: document.text,
                           isSaving: document.isSaving,
+                          isRetrying: document.saveStatus == .retrying,
                           showPreview: $windowState.showPreview)
         }
         .background(Color.paper)

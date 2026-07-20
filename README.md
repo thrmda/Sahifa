@@ -44,7 +44,9 @@ on disk.
   Public repositories can be read without an account;
   connect one in Settings → Accounts to reach private repositories and to save.
   The token is kept in the macOS Keychain. If someone else changes a file while
-  you have it open, you get the same conflict prompt as for a local file.
+  you have it open, you get the same conflict prompt as for a local file. A save
+  that can't reach the server holds your edits and retries — you're warned rather
+  than losing work if you quit while one is still pending.
 - **Folders you add, browsed as a tree.** Add as many folders as you like;
   each stays in the sidebar and expands into its subfolders, loading them as
   you open them, and updating live when anything changes on disk. Files opened on their own sit under *Opened Files* instead of
@@ -84,6 +86,7 @@ scripts/test-formatting.sh           # formatting actions, selection, undo
 scripts/test-github-store.sh         # reading a GitHub repository (no login)
 scripts/test-accounts.sh             # Keychain storage, refused credentials
 scripts/test-github-write.sh         # saving back (opt-in, see the script)
+scripts/test-save-retry.sh           # failed-save handling and retry
 ```
 
 `test-formatting.sh` links the swift-markdown objects from a prior Debug
