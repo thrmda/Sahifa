@@ -63,6 +63,13 @@ xcodebuild -project Sahifa.xcodeproj -scheme Sahifa -configuration Release build
 The first build resolves one Swift package (swift-markdown) from GitHub.
 Fonts, icon and colors are already in the repo — no other setup.
 
+Regression tests for the trickiest non-UI behaviour — what happens when a file
+changes on disk while it's open — run without Xcode or an app bundle:
+
+```bash
+scripts/test-document-conflicts.sh
+```
+
 On first launch, click **Open Folder…** (⇧⌘O) and pick any folder of `.md`
 files — try the bundled `Samples/` folder, which contains a mixed
 English/Arabic document and an Arabic-named file.

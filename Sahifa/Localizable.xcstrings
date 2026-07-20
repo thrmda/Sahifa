@@ -256,6 +256,16 @@
         }
       }
     },
+    "Keep My Version": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الإبقاء على نسختي"
+          }
+        }
+      }
+    },
     "Language": {
       "extractionState": "manual",
       "localizations": {
@@ -434,6 +444,16 @@
         }
       }
     },
+    "Reload from Disk": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إعادة التحميل من القرص"
+          }
+        }
+      }
+    },
     "Save": {
       "extractionState": "manual",
       "localizations": {
@@ -502,6 +522,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "جدول"
+          }
+        }
+      }
+    },
+    "This file changed on disk. Autosave is paused.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تغيّر هذا الملف على القرص. أُوقف الحفظ التلقائي مؤقتًا."
           }
         }
       }

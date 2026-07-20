@@ -303,6 +303,30 @@ private func enterFullScreenWhenReady(attemptsLeft: Int) {
     }
 }
 
+/// Shown when a file changed on disk while the editor held unsaved edits.
+/// Deliberately a banner rather than an alert: autosave is already paused, so
+/// nothing is at risk while the user finishes a thought, and a modal here
+/// would interrupt typing to ask a question they can answer at leisure.
+private struct ConflictBanner: View {
+    @ObservedObject var document: DocumentModel
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(Color.gold)
+            Text("This file changed on disk. Autosave is paused.")
+                .lineLimit(2)
+            Spacer(minLength: 0)
+            Button("Keep My Version") { document.resolveKeepingMine() }
+            Button("Reload from Disk") { document.resolveUsingDisk() }
+        }
+        .font(.custom("IBMPlexSans", size: 12))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(Color.sand)
+    }
+}
+
 /// Invisible view that reports when its window becomes key, so AppModel knows
 /// which window's state should receive externally opened files (Finder
 /// "Open With", Dock drops). SwiftUI offers no direct NSWindow handle; this
@@ -358,6 +382,10 @@ struct DocumentEditorView: View {
         VStack(spacing: 0) {
             if showFormatBar {
                 FormatBarView()
+                Divider()
+            }
+            if document.hasConflict {
+                ConflictBanner(document: document)
                 Divider()
             }
             // Not HSplitView: it keeps the divider at an absolute offset, so

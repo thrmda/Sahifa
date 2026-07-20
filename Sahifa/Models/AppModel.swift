@@ -58,6 +58,20 @@ final class AppModel: ObservableObject {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.saveAll() }
         }
+        // Coming back to the app is when another program is most likely to
+        // have edited a file we have open — reconcile before the user resumes
+        // typing into a stale document.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                for document in self.documentCache.values {
+                    document.reconcileWithDisk()
+                }
+                self.refreshFiles()
+            }
+        }
     }
 
     // MARK: Workspace
