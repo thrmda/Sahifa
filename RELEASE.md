@@ -19,9 +19,24 @@ network-client entitlement that a sandboxed `WKWebView` requires — see Notes)
 | Run it yourself on this Mac | Nothing — `scripts/release.sh` with no env vars gives an ad-hoc build. |
 | Share with others without Gatekeeper warnings | Apple Developer Program membership, a **Developer ID Application** certificate, and notarization. |
 
-Ad-hoc builds run fine locally but other Macs will show *“Sahifa can't be
-opened because Apple cannot check it for malicious software.”* Only a
-Developer-ID-signed **and notarized** build clears that.
+Ad-hoc builds run fine locally but other Macs will show *“Apple could not
+verify ‘Sahifa’ is free of malware.”* The signature itself is valid
+(`codesign -v --deep --strict` passes) — what's missing is a Developer ID and
+a notarization ticket, and only a build that has both clears Gatekeeper
+outright (`spctl -a -t install` returns `rejected: no usable signature`
+otherwise).
+
+If you distribute an ad-hoc DMG anyway, tell users how to get past that. On
+**macOS 15 and later the old Control-click → Open bypass no longer works**;
+the only routes are:
+
+1. Try to open the app, then go to  → System Settings → Privacy & Security,
+   scroll to Security, and click **Open Anyway**; or
+2. Strip the quarantine flag directly:
+
+   ```bash
+   xattr -d com.apple.quarantine /Applications/Sahifa.app
+   ```
 
 ## One-time setup (for a distributable build)
 

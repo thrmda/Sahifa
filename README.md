@@ -126,8 +126,22 @@ Samples/                mixed-direction demo documents
 
 ## Releases
 
-To build a signed, notarized `.app` / DMG for distribution, see
-[RELEASE.md](RELEASE.md) and the `scripts/release.sh` helper.
+To build a distributable `.app` / DMG, see [RELEASE.md](RELEASE.md) and the
+`scripts/release.sh` helper.
+
+Prebuilt DMGs are **not notarized** — that needs a paid Apple Developer
+Program membership. macOS will therefore refuse to open a downloaded build
+with *“Apple could not verify ‘Sahifa’ is free of malware”*, and on macOS 15
+and later Control-clicking the app no longer bypasses this. To run it, either
+open  → System Settings → Privacy & Security and click **Open Anyway**, or
+remove the quarantine flag:
+
+```bash
+xattr -d com.apple.quarantine /Applications/Sahifa.app
+```
+
+Building from source (above) sidesteps all of this and is the recommended
+route until the project is notarized.
 
 ## License
 
