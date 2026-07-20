@@ -73,7 +73,11 @@ app bundle — the model layer compiles on its own:
 ```bash
 scripts/test-document-conflicts.sh   # files changed on disk while open
 scripts/test-tree-operations.sh      # source/tree ids, rename, move to trash
+scripts/test-formatting.sh           # formatting actions, selection, undo
 ```
+
+`test-formatting.sh` links the swift-markdown objects from a prior Debug
+build, so run a normal build once before it.
 
 On first launch, click **Add Folder…** (⇧⌘O) and pick any folder of `.md`
 files — try the bundled `Samples/` folder, which contains a mixed

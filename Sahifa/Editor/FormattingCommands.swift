@@ -141,7 +141,8 @@ extension BidiTextView {
         if paragraphs.isEmpty { paragraphs = [selection] }
 
         let marker = String(repeating: "#", count: level) + " "
-        for paragraph in paragraphs.reversed() {
+        var edits: [(NSRange, String)] = []
+        for paragraph in paragraphs {
             let line = ns.substring(with: paragraph)
 
             var hashes = 0
@@ -161,8 +162,9 @@ extension BidiTextView {
             let existing = prefixLength > 0 ? hashes : 0
             let prefixRange = NSRange(location: paragraph.location, length: prefixLength)
             let replacement = existing == level ? "" : marker
-            replace(prefixRange, with: replacement, selecting: nil)
+            edits.append((prefixRange, replacement))
         }
+        applyParagraphEdits(edits, spanning: selection)
     }
 
     // MARK: List / quote markers
@@ -226,8 +228,39 @@ extension BidiTextView {
                 edits.append((NSRange(location: paragraph.location, length: stripped), prefix))
             }
         }
+        applyParagraphEdits(edits, spanning: selection)
+    }
+
+    /// Applies paragraph edits — computed in document order — back to front so
+    /// earlier ranges stay valid, then puts the user's selection back.
+    ///
+    /// Restoring it is the point. Each `replace` moves the insertion point to
+    /// its own edit, so without this the selection collapses into whichever
+    /// paragraph happened to be edited last: marking three lines as a list
+    /// left only one line selected, and a second toggle then only saw that
+    /// line. A caret is carried along by the text it sits in; a range keeps
+    /// covering the same paragraphs.
+    private func applyParagraphEdits(_ edits: [(NSRange, String)], spanning span: NSRange) {
+        guard !edits.isEmpty else { return }
+        let original = selectedRange()
+        var totalDelta = 0
+        var deltaBeforeCaret = 0
+        for (range, replacement) in edits {
+            let delta = (replacement as NSString).length - range.length
+            totalDelta += delta
+            if NSMaxRange(range) <= original.location { deltaBeforeCaret += delta }
+        }
         for (range, replacement) in edits.reversed() {
             replace(range, with: replacement, selecting: nil)
+        }
+        let limit = (string as NSString).length
+        if original.length == 0 {
+            let caret = min(max(0, original.location + deltaBeforeCaret), limit)
+            setSelectedRange(NSRange(location: caret, length: 0))
+        } else {
+            let start = min(span.location, limit)
+            let length = min(max(0, span.length + totalDelta), limit - start)
+            setSelectedRange(NSRange(location: start, length: length))
         }
     }
 
