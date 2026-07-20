@@ -13,7 +13,7 @@ import WebKit
 /// a URL change, renders the new content immediately and resets the scroll.
 struct MarkdownPreview: NSViewRepresentable {
     let markdown: String
-    let documentURL: URL?
+    let documentID: DocumentID?
     var scrollSync: ScrollSync? = nil
 
     func makeCoordinator() -> Coordinator {
@@ -33,14 +33,14 @@ struct MarkdownPreview: NSViewRepresentable {
         context.coordinator.webView = webView
         scrollSync?.previewWebView = webView
         context.coordinator.loadShell()
-        context.coordinator.render(markdown, url: documentURL, immediately: true)
+        context.coordinator.render(markdown, id: documentID, immediately: true)
         return webView
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
         context.coordinator.scrollSync = scrollSync
         scrollSync?.previewWebView = webView
-        context.coordinator.render(markdown, url: documentURL, immediately: false)
+        context.coordinator.render(markdown, id: documentID, immediately: false)
     }
 
     /// Break the userContentController → coordinator retain when the preview
@@ -56,7 +56,7 @@ struct MarkdownPreview: NSViewRepresentable {
         private var shellReady = false
         private var pending: (markdown: String, resetScroll: Bool)?
         private var lastRendered: String?
-        private var renderedURL: URL?
+        private var renderedID: DocumentID?
         private var debounce: Task<Void, Never>?
 
         init(scrollSync: ScrollSync?) {
@@ -75,13 +75,13 @@ struct MarkdownPreview: NSViewRepresentable {
             scrollSync?.previewDidScroll(CGFloat(fraction))
         }
 
-        func render(_ markdown: String, url: URL?, immediately: Bool) {
-            let urlChanged = url != renderedURL
-            renderedURL = url
-            guard urlChanged || markdown != lastRendered else { return }
-            pending = (markdown, urlChanged)
+        func render(_ markdown: String, id: DocumentID?, immediately: Bool) {
+            let documentChanged = id != renderedID
+            renderedID = id
+            guard documentChanged || markdown != lastRendered else { return }
+            pending = (markdown, documentChanged)
             debounce?.cancel()
-            if immediately || urlChanged {
+            if immediately || documentChanged {
                 flush()
             } else {
                 debounce = Task { [weak self] in

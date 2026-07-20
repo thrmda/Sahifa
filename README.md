@@ -38,6 +38,10 @@ on disk.
 - **IBM Plex everywhere** (bundled, SIL OFL): Plex Sans for Latin, Plex Sans
   Arabic for Arabic — matched as one superfamily per script run — and Plex
   Mono for code.
+- **Folders you add, browsed as a tree.** Add as many folders as you like;
+  each stays in the sidebar and expands into its subfolders, loading them as
+  you open them. Files opened on their own sit under *Opened Files* instead of
+  replacing what you were looking at.
 - **Plain `.md` files** in a folder you choose. No library format, no
   database, no accounts, no telemetry, no network calls.
 
@@ -70,7 +74,7 @@ changes on disk while it's open — run without Xcode or an app bundle:
 scripts/test-document-conflicts.sh
 ```
 
-On first launch, click **Open Folder…** (⇧⌘O) and pick any folder of `.md`
+On first launch, click **Add Folder…** (⇧⌘O) and pick any folder of `.md`
 files — try the bundled `Samples/` folder, which contains a mixed
 English/Arabic document and an Arabic-named file.
 
@@ -81,7 +85,7 @@ English/Arabic document and an Arabic-named file.
 | Action | Shortcut |
 | --- | --- |
 | Open File… | ⌘O |
-| Open Folder… (workspace) | ⇧⌘O |
+| Add Folder… (adds a sidebar source) | ⇧⌘O |
 | Open Recent (folders and files) | File menu |
 | New file | ⌘N |
 | New window | ⇧⌘N |
@@ -124,7 +128,7 @@ Sahifa/                 app sources (SwiftUI shell + TextKit 2 editor)
                         fonts, formatting commands, editor↔preview scroll sync
   Export/               Markdown→HTML renderer, HTML/PDF export, Arabic PDF
                         text-layer repair
-  Models/               workspace + document (plain files, autosave, bookmarks)
+  Models/               sources, tree, document (plain files, autosave, bookmarks)
   Views/                sidebar, format bar, status bar, preview, settings
   Assets.xcassets       brand colors (light/dark) + app icon
   Localizable.xcstrings en / ar string catalog

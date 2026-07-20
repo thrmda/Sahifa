@@ -77,9 +77,9 @@ struct ContentView: View {
                 Button {
                     model.chooseFolder()
                 } label: {
-                    Label("Open Folder…", systemImage: "folder")
+                    Label("Add Folder…", systemImage: "folder.badge.plus")
                 }
-                .help(Text("Open Folder…"))
+                .help(Text("Add Folder…"))
                 Button {
                     model.chooseFile()
                 } label: {
@@ -87,11 +87,13 @@ struct ContentView: View {
                 }
                 .help(Text("Open File…"))
                 Button {
-                    if let url = model.newFile() { windowState.selectedFile = url }
+                    if let id = model.newFile(in: windowState.newFileTarget) {
+                        windowState.selection = id
+                    }
                 } label: {
                     Label("New File", systemImage: "square.and.pencil")
                 }
-                .disabled(model.workspaceURL == nil)
+                .disabled(!model.canCreateFiles)
                 .help(Text("New File"))
             }
         }
@@ -127,13 +129,13 @@ struct ContentView: View {
     private var detail: some View {
         if let document = windowState.document {
             DocumentEditorView(document: document)
-        } else if model.workspaceURL == nil {
+        } else if model.sources.isEmpty {
             ContentUnavailableView {
-                Label("No folder open", systemImage: "folder")
+                Label("No folders yet", systemImage: "folder.badge.plus")
             } description: {
-                Text("Open a folder or a Markdown file to begin.")
+                Text("Add a folder of Markdown files, or open a single file. Folders stay in the sidebar until you remove them.")
             } actions: {
-                Button("Open Folder…") { model.chooseFolder() }
+                Button("Add Folder…") { model.chooseFolder() }
                     .buttonStyle(.borderedProminent)
                     .tint(.sage)
                 Button("Open File…") { model.chooseFile() }
@@ -178,14 +180,14 @@ private struct EditorPreviewSplit: View {
                 MarkdownEditor(text: $document.text, fontSize: fontSize,
                                lineSpacing: lineSpacing, focusMode: focusMode,
                                scrollSync: showPreview ? scrollSync : nil)
-                    .id(document.url)
+                    .id(document.id)
                     .frame(width: editorWidth)
                 if showPreview {
                     splitHandle(containerWidth: width)
-                    // No `.id(document.url)`: recreating the WebView per file
-                    // switch reloads the ~1.7 MB font-embedded shell and blanks
-                    // the pane; the coordinator swaps content in place instead.
-                    MarkdownPreview(markdown: document.text, documentURL: document.url,
+                    // No `.id(...)`: recreating the WebView per file switch
+                    // reloads the ~1.7 MB font-embedded shell and blanks the
+                    // pane; the coordinator swaps content in place instead.
+                    MarkdownPreview(markdown: document.text, documentID: document.id,
                                     scrollSync: scrollSync)
                         .frame(maxWidth: .infinity)
                 }
@@ -265,7 +267,17 @@ private func applyDevWindowFlags(model: AppModel, windowState: WindowState,
     } else if args.contains("-devSecondWindow") || args.contains("-devSecondTab") {
         // Demonstrate per-window independence: the extra window shows the
         // last file instead of the default.
-        windowState.selectedFile = model.files.last
+        windowState.selection = visibleFiles(model).last
+    }
+}
+
+/// Files currently readable from the loaded part of the tree — dev flags only.
+@MainActor
+private func visibleFiles(_ model: AppModel) -> [DocumentID] {
+    model.sources.flatMap { source -> [DocumentID] in
+        let root = DocumentID(sourceID: source.id, path: "")
+        model.loadChildren(of: root)
+        return (model.children(of: root) ?? []).filter { !$0.isDirectory }.map(\.id)
     }
 }
 
@@ -273,12 +285,12 @@ private func applyDevWindowFlags(model: AppModel, windowState: WindowState,
 private func cycleFiles(model: AppModel, windowState: WindowState,
                         period: Double, step: Int) {
     DispatchQueue.main.asyncAfter(deadline: .now() + period) {
-        let files = model.files
+        let files = visibleFiles(model)
         guard !files.isEmpty else {
             cycleFiles(model: model, windowState: windowState, period: period, step: step)
             return
         }
-        windowState.selectedFile = files[step % files.count]
+        windowState.selection = files[step % files.count]
         cycleFiles(model: model, windowState: windowState, period: period, step: step + 1)
     }
 }

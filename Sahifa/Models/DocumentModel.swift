@@ -9,6 +9,10 @@ import Combine
 /// wrote and refuses to autosave over a file that changed underneath it.
 @MainActor
 final class DocumentModel: ObservableObject, Identifiable {
+    /// Source-scoped identity. `url` is how *this* (local) source happens to
+    /// reach the document; a later source type would resolve `id` its own way,
+    /// which is why nothing outside here keys off the URL.
+    let id: DocumentID
     let url: URL
     @Published var text: String
     @Published private(set) var lastError: String?
@@ -24,8 +28,6 @@ final class DocumentModel: ObservableObject, Identifiable {
     private var diskStamp: DiskStamp?
     private var cancellable: AnyCancellable?
 
-    nonisolated var id: URL { url }
-
     var displayName: String {
         url.lastPathComponent
     }
@@ -35,7 +37,8 @@ final class DocumentModel: ObservableObject, Identifiable {
         url.deletingPathExtension().lastPathComponent
     }
 
-    init(url: URL) {
+    init(id: DocumentID, url: URL) {
+        self.id = id
         self.url = url
         let content = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
         self.text = content

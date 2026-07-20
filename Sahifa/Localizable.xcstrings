@@ -1,6 +1,26 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Add Folder…": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إضافة مجلد…"
+          }
+        }
+      }
+    },
+    "Add a folder of Markdown files, or open a single file. Folders stay in the sidebar until you remove them.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "أضف مجلدًا يحتوي على ملفات Markdown، أو افتح ملفًا مفردًا. تبقى المجلدات في الشريط الجانبي حتى تزيلها."
+          }
+        }
+      }
+    },
     "Bold": {
       "localizations": {
         "ar": {
@@ -70,6 +90,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "المحرر"
+          }
+        }
+      }
+    },
+    "Empty": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فارغ"
           }
         }
       }
@@ -319,6 +349,16 @@
         }
       }
     },
+    "Loading…": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "جارٍ التحميل…"
+          }
+        }
+      }
+    },
     "New File": {
       "extractionState": "manual",
       "localizations": {
@@ -326,6 +366,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "ملف جديد"
+          }
+        }
+      }
+    },
+    "New File Here": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ملف جديد هنا"
           }
         }
       }
@@ -368,6 +418,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "لا يوجد مجلد مفتوح"
+          }
+        }
+      }
+    },
+    "No folders yet": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لا توجد مجلدات بعد"
           }
         }
       }
@@ -444,6 +504,16 @@
         }
       }
     },
+    "Opened Files": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ملفات مفتوحة"
+          }
+        }
+      }
+    },
     "Open…": {
       "localizations": {
         "ar": {
@@ -470,6 +540,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "إعادة التحميل من القرص"
+          }
+        }
+      }
+    },
+    "Remove from Sidebar": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إزالة من الشريط الجانبي"
+          }
+        }
+      }
+    },
+    "Reveal in Finder": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إظهار في Finder"
           }
         }
       }
@@ -552,6 +642,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "تغيّر هذا الملف على القرص. أُوقف الحفظ التلقائي مؤقتًا."
+          }
+        }
+      }
+    },
+    "This folder is missing": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "هذا المجلد مفقود"
           }
         }
       }

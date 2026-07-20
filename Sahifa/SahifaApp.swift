@@ -62,10 +62,12 @@ struct SahifaCommands: Commands {
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
             Button("New File") {
-                if let url = model.newFile() { windowState?.selectedFile = url }
+                if let id = model.newFile(in: windowState?.newFileTarget) {
+                    windowState?.selection = id
+                }
             }
             .keyboardShortcut("n", modifiers: .command)
-            .disabled(model.workspaceURL == nil)
+            .disabled(!model.canCreateFiles)
             Button("New Window") { openWindow(id: "main") }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
             Button("New Tab") { WindowTabbing.openAsTab { openWindow(id: "main") } }
@@ -73,7 +75,7 @@ struct SahifaCommands: Commands {
             Divider()
             Button("Open File…") { model.chooseFile() }
                 .keyboardShortcut("o", modifiers: .command)
-            Button("Open Folder…") { model.chooseFolder() }
+            Button("Add Folder…") { model.chooseFolder() }
                 .keyboardShortcut("o", modifiers: [.command, .shift])
             Menu("Open Recent") {
                 ForEach(model.recentFolders) { item in

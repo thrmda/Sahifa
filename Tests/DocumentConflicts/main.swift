@@ -11,10 +11,18 @@ let dir = URL(fileURLWithPath: NSTemporaryDirectory())
 try! FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 defer { try? FileManager.default.removeItem(at: dir) }
 
+/// Every source is local here, so one stand-in source resolves the IDs.
+let testSource = Source(id: UUID(), kind: .localFolder, name: "test", rootURL: dir)
+
 func makeFile(_ name: String, _ contents: String) -> URL {
     let url = dir.appendingPathComponent(name)
     try! contents.write(to: url, atomically: true, encoding: .utf8)
     return url
+}
+
+@MainActor
+func makeDocument(_ url: URL) -> DocumentModel {
+    DocumentModel(id: testSource.documentID(for: url)!, url: url)
 }
 func onDisk(_ url: URL) -> String {
     (try? String(contentsOf: url, encoding: .utf8)) ?? "<unreadable>"
@@ -28,7 +36,7 @@ MainActor.assumeIsolated {
     // 1. No local edits + external change → follow the file silently.
     do {
         let url = makeFile("clean.md", "original")
-        let doc = DocumentModel(url: url)
+        let doc = makeDocument(url)
         externalWrite(url, "from another app")
         doc.reconcileWithDisk()
         check("clean document follows the file", doc.text == "from another app", doc.text)
@@ -38,7 +46,7 @@ MainActor.assumeIsolated {
     // 2. Local edits + external change → conflict, and the file is untouched.
     do {
         let url = makeFile("conflict.md", "original")
-        let doc = DocumentModel(url: url)
+        let doc = makeDocument(url)
         doc.text = "my unsaved edit"
         externalWrite(url, "their edit")
         doc.saveNow()
@@ -55,7 +63,7 @@ MainActor.assumeIsolated {
     // 3. Resolve by keeping mine → my text wins, conflict clears.
     do {
         let url = makeFile("keep.md", "original")
-        let doc = DocumentModel(url: url)
+        let doc = makeDocument(url)
         doc.text = "mine"
         externalWrite(url, "theirs")
         doc.saveNow()
@@ -73,7 +81,7 @@ MainActor.assumeIsolated {
     // 4. Resolve by using disk → their text wins.
     do {
         let url = makeFile("reload.md", "original")
-        let doc = DocumentModel(url: url)
+        let doc = makeDocument(url)
         doc.text = "mine"
         externalWrite(url, "theirs")
         doc.saveNow()
@@ -86,7 +94,7 @@ MainActor.assumeIsolated {
     // 5. Untouched file: normal autosave still writes.
     do {
         let url = makeFile("normal.md", "original")
-        let doc = DocumentModel(url: url)
+        let doc = makeDocument(url)
         doc.text = "edited normally"
         doc.saveNow()
         check("ordinary autosave still writes", onDisk(url) == "edited normally", onDisk(url))
@@ -96,7 +104,7 @@ MainActor.assumeIsolated {
     // 6. Deleted file: writing recreates it rather than dropping the text.
     do {
         let url = makeFile("deleted.md", "original")
-        let doc = DocumentModel(url: url)
+        let doc = makeDocument(url)
         doc.text = "still wanted"
         try? FileManager.default.removeItem(at: url)
         doc.saveNow()
@@ -106,7 +114,7 @@ MainActor.assumeIsolated {
     // 7. Same-length external edit — the case a size-only check would miss.
     do {
         let url = makeFile("samesize.md", "aaaa")
-        let doc = DocumentModel(url: url)
+        let doc = makeDocument(url)
         doc.text = "bbbb"
         externalWrite(url, "cccc")
         doc.saveNow()

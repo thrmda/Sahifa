@@ -3,53 +3,61 @@ import Combine
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Workspace state: a user-chosen folder of plain .md files, browsed in the
-/// sidebar. Sandboxed access persists across launches via a security-scoped
-/// bookmark.
+/// App-wide state: the list of sources the user has added and the documents
+/// opened from them.
+///
+/// Sources are a list, not a single workspace. Opening a folder *adds* a
+/// root; opening a file selects it where it already lives, or files it under
+/// the built-in loose-files source. Nothing is silently replaced, which is
+/// what the old single-workspace model did every time a file was opened from
+/// Finder.
 @MainActor
 final class AppModel: ObservableObject {
     /// Single instance: the SwiftUI scene owns it as a StateObject, and the
     /// app delegate reaches it for Finder open events (application(_:open:)).
     static let shared = AppModel()
 
-    @Published private(set) var workspaceURL: URL?
-    @Published private(set) var files: [URL] = []
+    @Published private(set) var sources: [Source] = []
     @Published private(set) var recentItems: [RecentItem] = []
 
-    /// One DocumentModel per file, shared by every window showing it.
-    private var documentCache: [URL: DocumentModel] = [:]
+    /// Children per directory, filled in as the user expands the tree. `nil`
+    /// means "not read yet" — the sidebar shows a chevron and loads on
+    /// demand, because eagerly walking a real notes folder is wasteful and
+    /// no remote source could do it at all.
+    @Published private(set) var childrenByDirectory: [DocumentID: [Node]] = [:]
 
-    private var monitor: DispatchSourceFileSystemObject?
-    /// Files opened individually (panel, Finder, drag-drop) rather than via a
-    /// folder; kept listed even when the sandbox can't read their parent.
-    private var standaloneFiles: [URL] = []
-    private static let bookmarkKey = "workspaceBookmark"
+    /// Documents opened on their own, listed under the loose-files source.
+    @Published private(set) var looseFiles: [URL] = []
 
-    /// Which window's state receives externally opened files (last key
+    /// One DocumentModel per document, shared by every window showing it.
+    private var documentCache: [DocumentID: DocumentModel] = [:]
+
+    /// One per local source root: catches files added or removed at the top
+    /// level. Deeper directories refresh when expanded and when the app is
+    /// reactivated (see the didBecomeActive observer).
+    private var monitors: [UUID: DispatchSourceFileSystemObject] = [:]
+
+    /// Which window's state receives externally opened documents (last key
     /// window; see KeyWindowTracker in ContentView).
     weak var frontWindowState: WindowState?
     /// External open that arrived before any window attached (cold launch via
     /// Finder); consumed by the first WindowState.attach.
-    private var pendingSelection: URL?
+    private var pendingSelection: DocumentID?
 
-    /// Fires only when the user *deliberately* switches workspace folder
-    /// (Open Folder…), so every window adopts the new folder. Opening an
-    /// individual file also changes `workspaceURL` — but that must NOT move
-    /// other windows, so it deliberately does not fire this.
-    let workspaceDidChange = PassthroughSubject<Void, Never>()
+    /// Fires when a source is added, so a window with nothing open adopts it.
+    /// Windows already showing a document are left alone.
+    let sourceAdded = PassthroughSubject<Source, Never>()
 
     init() {
-        // Before restoreWorkspace, which reads the recent files back out.
         recentItems = loadRecents()
-        // Dev convenience: `Sahifa -workspace /path` opens a folder or a
+        restoreSources()
+        // Dev convenience: `Sahifa -workspace /path` adds a folder or opens a
         // single Markdown file directly (useful for testing; under the
         // sandbox, arbitrary paths only resolve when access is otherwise
         // granted).
         if let index = CommandLine.arguments.firstIndex(of: "-workspace"),
            index + 1 < CommandLine.arguments.count {
-            openItem(URL(fileURLWithPath: CommandLine.arguments[index + 1]))
-        } else {
-            restoreWorkspace()
+            openExternal([URL(fileURLWithPath: CommandLine.arguments[index + 1])])
         }
         NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification, object: nil, queue: .main
@@ -63,7 +71,7 @@ final class AppModel: ObservableObject {
         }
         // Coming back to the app is when another program is most likely to
         // have edited a file we have open — reconcile before the user resumes
-        // typing into a stale document.
+        // typing into a stale document, and re-read the tree they can see.
         NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
         ) { [weak self] _ in
@@ -72,12 +80,20 @@ final class AppModel: ObservableObject {
                 for document in self.documentCache.values {
                     document.reconcileWithDisk()
                 }
-                self.refreshFiles()
+                self.refreshLoadedDirectories()
             }
         }
     }
 
-    // MARK: Workspace
+    // MARK: Sources
+
+    func source(_ id: UUID) -> Source? {
+        sources.first { $0.id == id }
+    }
+
+    func url(for id: DocumentID) -> URL? {
+        source(id.sourceID)?.url(for: id)
+    }
 
     /// Folder and file opening are separate panels on purpose: a combined
     /// panel (canChooseFiles + canChooseDirectories + content-type filter)
@@ -87,42 +103,19 @@ final class AppModel: ObservableObject {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        saveBookmark(url)
-        openItem(url)
-        workspaceDidChange.send()
+        panel.allowsMultipleSelection = true
+        guard panel.runModal() == .OK else { return }
+        openExternal(panel.urls)
     }
 
     func chooseFile() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = false
+        panel.allowsMultipleSelection = true
         panel.allowedContentTypes = Self.markdownTypes
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        // Same routing as a Finder open: the file lands in the window that
-        // asked for it, and no other window is disturbed.
-        openExternal([url])
-    }
-
-    /// Three slots, each with a distinct job: the folder keeps the sidebar's
-    /// listing across launches, the recent-file list keeps sandbox access to
-    /// files opened individually, and last-opened records what to actually
-    /// restore. Folding these together loses something either way — one slot
-    /// makes every file open forget the folder, while keying restore off the
-    /// folder alone makes a file opened from Finder vanish on relaunch.
-    private func saveBookmark(_ url: URL) {
-        guard let bookmark = try? url.bookmarkData(options: .withSecurityScope,
-                                                   includingResourceValuesForKeys: nil,
-                                                   relativeTo: nil) else { return }
-        UserDefaults.standard.set(bookmark, forKey: Self.lastOpenedKey)
-        let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory
-            ?? url.hasDirectoryPath
-        if isDirectory {
-            UserDefaults.standard.set(bookmark, forKey: Self.bookmarkKey)
-        }
-        rememberRecent(RecentItem(bookmark: bookmark, path: url.path, isDirectory: isDirectory))
+        guard panel.runModal() == .OK else { return }
+        openExternal(panel.urls)
     }
 
     private static let markdownTypes: [UTType] =
@@ -133,66 +126,384 @@ final class AppModel: ObservableObject {
     /// `UTImportedTypeDeclarations`; keep the two in step.
     static let markdownExtensions = ["md", "markdown", "mdown", "mkd", "mkdn"]
 
-    /// Opens either a folder (workspace) or a single Markdown file. For a
-    /// file, the workspace becomes its parent folder; under the sandbox the
-    /// grant covers only the file itself, so the sidebar may list just it.
-    private func openItem(_ url: URL) {
-        let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory
-            ?? url.hasDirectoryPath
-        if isDirectory {
-            standaloneFiles = []
-            setWorkspace(url)
-        } else {
-            if !standaloneFiles.contains(url) { standaloneFiles.append(url) }
-            let parent = url.deletingLastPathComponent()
-            if workspaceURL == parent {
-                refreshFiles()
-            } else {
-                setWorkspace(parent)
+    static func isMarkdown(_ url: URL) -> Bool {
+        markdownExtensions.contains(url.pathExtension.lowercased())
+    }
+
+    static func isDirectory(_ url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? url.hasDirectoryPath
+    }
+
+    /// Entry point for anything arriving from outside the app's own panels:
+    /// Finder "Open With", double-click, Dock-icon drops, drag-drop, and the
+    /// Open panels above. Folders become sources; files are selected where
+    /// they already live, or filed under loose files.
+    func openExternal(_ urls: [URL], preferring target: WindowState? = nil) {
+        var opened: DocumentID?
+        for url in urls {
+            if Self.isDirectory(url) {
+                addFolderSource(url)
+            } else if Self.isMarkdown(url) {
+                opened = adoptFile(url)
             }
         }
-    }
-
-    /// Entry point for files/folders arriving from outside the app's own
-    /// panels: Finder "Open With", double-click, Dock-icon drops
-    /// (application(_:open:)) and window drag-drop. These URLs carry an
-    /// implicit sandbox grant; the bookmark persists it across launches.
-    /// Selection goes to `preferring` (the drop-target window) or the last
-    /// key window; with no window yet (cold launch), the first window to
-    /// attach picks it up.
-    func openExternal(_ urls: [URL], preferring target: WindowState? = nil) {
-        var openedFile: URL?
-        for url in urls {
-            let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory
-                ?? url.hasDirectoryPath
-            let isMarkdown = Self.markdownExtensions.contains(url.pathExtension.lowercased())
-            guard isDirectory || isMarkdown else { continue }
-            saveBookmark(url)
-            openItem(url)
-            if !isDirectory { openedFile = url }
-        }
-        guard let file = openedFile else { return }
+        guard let document = opened else { return }
         if let windowState = target ?? frontWindowState {
-            windowState.selectedFile = file
+            windowState.selection = document
         } else {
-            pendingSelection = file
+            pendingSelection = document
         }
     }
 
-    /// What a new window should open first.
-    var defaultSelection: URL? {
-        standaloneFiles.last ?? files.first
+    @discardableResult
+    private func addFolderSource(_ url: URL) -> Source? {
+        saveBookmark(url)
+        // Already added: refresh it rather than listing the same folder twice.
+        if let existing = sources.first(where: {
+            $0.kind == .localFolder && $0.rootURL.standardizedFileURL == url.standardizedFileURL
+        }) {
+            loadChildren(of: DocumentID(sourceID: existing.id, path: ""), force: true)
+            return existing
+        }
+        let source = Source(id: UUID(), kind: .localFolder,
+                            name: url.lastPathComponent, rootURL: url)
+        sources.append(source)
+        persistSources()
+        loadChildren(of: DocumentID(sourceID: source.id, path: ""), force: true)
+        startMonitor(for: source)
+        sourceAdded.send(source)
+        return source
+    }
+
+    /// A file opens where it already lives if one of the added folders
+    /// contains it; only genuinely homeless files land in loose files.
+    private func adoptFile(_ url: URL) -> DocumentID? {
+        saveBookmark(url)
+        if let owner = sources.first(where: {
+            $0.kind == .localFolder && $0.documentID(for: url) != nil
+        }), let id = owner.documentID(for: url) {
+            revealAncestors(of: id)
+            return id
+        }
+        if !looseFiles.contains(where: { $0.standardizedFileURL == url.standardizedFileURL }) {
+            looseFiles.append(url)
+            persistLooseFiles()
+        }
+        ensureLooseFilesSource()
+        refreshLooseFiles()
+        return looseSource().documentID(for: url)
+    }
+
+    /// Makes sure every directory above a document has been read, so the
+    /// sidebar can show and select it without the user expanding by hand.
+    private func revealAncestors(of id: DocumentID) {
+        var components = id.path.split(separator: "/").map(String.init)
+        guard !components.isEmpty else { return }
+        components.removeLast()
+        var current = DocumentID(sourceID: id.sourceID, path: "")
+        loadChildren(of: current)
+        for component in components {
+            current = current.appending(component)
+            loadChildren(of: current)
+        }
+    }
+
+    func removeSource(_ id: UUID) {
+        guard let index = sources.firstIndex(where: { $0.id == id }) else { return }
+        let source = sources[index]
+        monitors[id]?.cancel()
+        monitors[id] = nil
+        sources.remove(at: index)
+        childrenByDirectory = childrenByDirectory.filter { $0.key.sourceID != id }
+        if source.kind == .looseFiles {
+            looseFiles = []
+            persistLooseFiles()
+        }
+        persistSources()
+    }
+
+    private func looseSource() -> Source {
+        sources.first { $0.kind == .looseFiles } ?? Source.looseFiles()
+    }
+
+    private func ensureLooseFilesSource() {
+        guard !sources.contains(where: { $0.kind == .looseFiles }) else { return }
+        sources.append(Source.looseFiles())
+    }
+
+    // MARK: Tree
+
+    /// Children of a directory, or nil when it hasn't been read yet.
+    func children(of id: DocumentID) -> [Node]? {
+        childrenByDirectory[id]
+    }
+
+    /// Reads one directory's children. Cheap and shallow by design: the tree
+    /// fills in as the user opens it.
+    func loadChildren(of id: DocumentID, force: Bool = false) {
+        guard force || childrenByDirectory[id] == nil else { return }
+        guard let source = source(id.sourceID) else { return }
+        if source.kind == .looseFiles {
+            childrenByDirectory[id] = looseFileNodes()
+            return
+        }
+        let directory = source.url(for: id)
+        let contents = (try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles])) ?? []
+        var nodes: [Node] = []
+        for url in contents {
+            let isDirectory = Self.isDirectory(url)
+            guard isDirectory || Self.isMarkdown(url) else { continue }
+            nodes.append(Node(id: id.appending(url.lastPathComponent),
+                              name: url.lastPathComponent,
+                              isDirectory: isDirectory))
+        }
+        // Folders first, then files; each alphabetical the way Finder sorts.
+        childrenByDirectory[id] = nodes.sorted {
+            $0.isDirectory == $1.isDirectory
+                ? $0.name.localizedStandardCompare($1.name) == .orderedAscending
+                : $0.isDirectory
+        }
+    }
+
+    private func looseFileNodes() -> [Node] {
+        let source = looseSource()
+        return looseFiles.compactMap { url in
+            guard let id = source.documentID(for: url) else { return nil }
+            return Node(id: id, name: url.lastPathComponent, isDirectory: false)
+        }
+    }
+
+    private func refreshLooseFiles() {
+        looseFiles.removeAll { !FileManager.default.fileExists(atPath: $0.path) }
+        let root = DocumentID(sourceID: Source.looseFilesID, path: "")
+        if childrenByDirectory[root] != nil || !looseFiles.isEmpty {
+            childrenByDirectory[root] = looseFileNodes()
+        }
+        if looseFiles.isEmpty {
+            sources.removeAll { $0.kind == .looseFiles }
+        }
+        persistLooseFiles()
+    }
+
+    /// Re-reads every directory already on screen, and re-checks that each
+    /// source still exists.
+    func refreshLoadedDirectories() {
+        for index in sources.indices where sources[index].kind == .localFolder {
+            let exists = FileManager.default.fileExists(atPath: sources[index].rootURL.path)
+            sources[index].status = exists ? .ready : .missing
+        }
+        for id in childrenByDirectory.keys where id.sourceID != Source.looseFilesID {
+            loadChildren(of: id, force: true)
+        }
+        refreshLooseFiles()
+    }
+
+    // MARK: Documents
+
+    func document(for id: DocumentID) -> DocumentModel? {
+        if let existing = documentCache[id] { return existing }
+        guard let url = url(for: id) else { return nil }
+        let document = DocumentModel(id: id, url: url)
+        documentCache[id] = document
+        return document
+    }
+
+    /// Whether a document still resolves to something on disk — the sidebar
+    /// drops selections that don't.
+    func exists(_ id: DocumentID) -> Bool {
+        guard let url = url(for: id) else { return false }
+        return FileManager.default.fileExists(atPath: url.path)
+    }
+
+    /// The first document a new window should show.
+    var defaultSelection: DocumentID? {
+        for source in sources {
+            let root = DocumentID(sourceID: source.id, path: "")
+            loadChildren(of: root)
+            if let first = children(of: root)?.first(where: { !$0.isDirectory }) {
+                return first.id
+            }
+        }
+        return nil
     }
 
     /// One-shot: an external open that arrived before any window existed.
-    func takePendingSelection() -> URL? {
+    func takePendingSelection() -> DocumentID? {
         defer { pendingSelection = nil }
         return pendingSelection
     }
 
+    /// Creates an empty Untitled file inside `directory` (a source root or any
+    /// folder in the tree) and returns its ID for the invoking window.
+    @discardableResult
+    func newFile(in directory: DocumentID?) -> DocumentID? {
+        guard let target = directory ?? firstWritableDirectory(),
+              let source = source(target.sourceID), source.kind == .localFolder
+        else { return nil }
+        let folder = source.url(for: target)
+        let base = String(localized: "Untitled")
+        var name = "\(base).md"
+        var counter = 2
+        while FileManager.default.fileExists(atPath: folder.appending(path: name).path) {
+            name = "\(base) \(counter).md"
+            counter += 1
+        }
+        do {
+            try "".write(to: folder.appending(path: name), atomically: true, encoding: .utf8)
+        } catch {
+            return nil
+        }
+        loadChildren(of: target, force: true)
+        return target.appending(name)
+    }
+
+    private func firstWritableDirectory() -> DocumentID? {
+        sources.first { $0.kind == .localFolder }
+            .map { DocumentID(sourceID: $0.id, path: "") }
+    }
+
+    var canCreateFiles: Bool {
+        sources.contains { $0.kind == .localFolder }
+    }
+
+    func saveAll() {
+        for document in documentCache.values {
+            document.saveNow()
+        }
+    }
+
+    // MARK: File-system monitoring
+
+    /// One watcher per source root. Deeper directories are re-read on expand
+    /// and on app activation instead of holding a descriptor each — a real
+    /// notes tree would otherwise cost hundreds of open files.
+    private func startMonitor(for source: Source) {
+        guard source.kind == .localFolder else { return }
+        let descriptor = open(source.rootURL.path, O_EVTONLY)
+        guard descriptor >= 0 else { return }
+        let watcher = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: descriptor,
+            eventMask: [.write, .rename, .delete],
+            queue: .main)
+        let id = source.id
+        watcher.setEventHandler { [weak self] in
+            MainActor.assumeIsolated {
+                self?.loadChildren(of: DocumentID(sourceID: id, path: ""), force: true)
+            }
+        }
+        watcher.setCancelHandler { close(descriptor) }
+        watcher.resume()
+        monitors[id]?.cancel()
+        monitors[id] = watcher
+    }
+
+    // MARK: Persistence
+
+    private static let sourcesKey = "sources"
+    private static let looseFilesKey = "looseFiles"
     private static let recentItemsKey = "recentItems"
-    private static let lastOpenedKey = "lastOpenedBookmark"
     private static let maxRecentItems = 12
+    /// Pre-sources keys, read once to migrate and then left alone.
+    private static let legacyWorkspaceKey = "workspaceBookmark"
+
+    private struct SourceRecord: Codable {
+        let id: UUID
+        let name: String
+        let bookmark: Data
+    }
+
+    private func persistSources() {
+        let records: [SourceRecord] = sources.compactMap { source in
+            guard source.kind == .localFolder,
+                  let bookmark = try? source.rootURL.bookmarkData(
+                    options: .withSecurityScope,
+                    includingResourceValuesForKeys: nil, relativeTo: nil)
+            else { return nil }
+            return SourceRecord(id: source.id, name: source.name, bookmark: bookmark)
+        }
+        guard let data = try? JSONEncoder().encode(records) else { return }
+        UserDefaults.standard.set(data, forKey: Self.sourcesKey)
+    }
+
+    private func persistLooseFiles() {
+        let bookmarks: [Data] = looseFiles.compactMap {
+            try? $0.bookmarkData(options: .withSecurityScope,
+                                 includingResourceValuesForKeys: nil, relativeTo: nil)
+        }
+        UserDefaults.standard.set(bookmarks, forKey: Self.looseFilesKey)
+    }
+
+    private func restoreSources() {
+        if let data = UserDefaults.standard.data(forKey: Self.sourcesKey),
+           let records = try? JSONDecoder().decode([SourceRecord].self, from: data) {
+            for record in records {
+                guard let url = resolveBookmark(record.bookmark) else { continue }
+                var source = Source(id: record.id, kind: .localFolder,
+                                    name: record.name, rootURL: url)
+                source.status = FileManager.default.fileExists(atPath: url.path)
+                    ? .ready : .missing
+                sources.append(source)
+                startMonitor(for: source)
+            }
+        } else {
+            migrateLegacyWorkspace()
+        }
+
+        let looseBookmarks = UserDefaults.standard.array(forKey: Self.looseFilesKey) as? [Data] ?? []
+        for bookmark in looseBookmarks {
+            guard let url = resolveBookmark(bookmark),
+                  FileManager.default.fileExists(atPath: url.path),
+                  // A file that now sits inside an added folder belongs there.
+                  !sources.contains(where: {
+                      $0.kind == .localFolder && $0.documentID(for: url) != nil
+                  })
+            else { continue }
+            looseFiles.append(url)
+        }
+        if !looseFiles.isEmpty { ensureLooseFilesSource() }
+        for source in sources {
+            loadChildren(of: DocumentID(sourceID: source.id, path: ""))
+        }
+    }
+
+    /// One-time upgrade from the single-workspace model: the old workspace
+    /// folder becomes the first source.
+    private func migrateLegacyWorkspace() {
+        guard let data = UserDefaults.standard.data(forKey: Self.legacyWorkspaceKey),
+              let url = resolveBookmark(data),
+              FileManager.default.fileExists(atPath: url.path)
+        else { return }
+        let source = Source(id: UUID(), kind: .localFolder,
+                            name: url.lastPathComponent, rootURL: url)
+        sources.append(source)
+        startMonitor(for: source)
+        persistSources()
+    }
+
+    /// Resolves a security-scoped bookmark and opens its scope for the app's
+    /// lifetime — sources and loose files are needed for as long as they're
+    /// listed, so there is nothing to balance here.
+    private func resolveBookmark(_ data: Data) -> URL? {
+        var stale = false
+        guard let url = try? URL(resolvingBookmarkData: data,
+                                 options: .withSecurityScope,
+                                 relativeTo: nil,
+                                 bookmarkDataIsStale: &stale)
+        else { return nil }
+        _ = url.startAccessingSecurityScopedResource()
+        return url
+    }
+
+    private func saveBookmark(_ url: URL) {
+        guard let bookmark = try? url.bookmarkData(options: .withSecurityScope,
+                                                   includingResourceValuesForKeys: nil,
+                                                   relativeTo: nil) else { return }
+        rememberRecent(RecentItem(bookmark: bookmark, path: url.path,
+                                  isDirectory: Self.isDirectory(url)))
+    }
 
     // MARK: Recent items (File ▸ Open Recent)
 
@@ -256,8 +567,6 @@ final class AppModel: ObservableObject {
             forgetRecent(item)
             return
         }
-        // Scope stays open: whatever this is, it's now the workspace or a
-        // listed file, and it's needed for as long as the app is running.
         openExternal([url])
     }
 
@@ -269,161 +578,5 @@ final class AppModel: ObservableObject {
     private func forgetRecent(_ item: RecentItem) {
         recentItems.removeAll { $0.path == item.path }
         persistRecents()
-    }
-
-    private func restoreWorkspace() {
-        // Reading a bookmark's file requires its security scope to be open, so
-        // every candidate gets opened and the ones we don't keep are closed
-        // again at the end — otherwise each launch strands a sandbox extension
-        // per remembered file.
-        var opened: [URL] = []
-
-        let folderData = UserDefaults.standard.data(forKey: Self.bookmarkKey)
-        if let folderData, let url = resolveBookmark(folderData, opened: &opened) {
-            openItem(url)
-        }
-        // Only recent files living in the restored workspace get listed.
-        // `recentItems` is newest-first; reversed so the newest is appended
-        // last and ends up as `defaultSelection`.
-        var existing: [URL] = []
-        for item in recentFiles.reversed() {
-            guard let url = resolveBookmark(item.bookmark, opened: &opened),
-                  FileManager.default.fileExists(atPath: url.path) else { continue }
-            existing.append(url)
-        }
-        if let workspace = workspaceURL {
-            for url in existing
-            where url.deletingLastPathComponent() == workspace && !standaloneFiles.contains(url) {
-                standaloneFiles.append(url)
-            }
-            refreshFiles()
-        }
-        // Whatever was opened last is what the app comes back to — and if that
-        // was a file from another folder, it brings its folder with it. Skipped
-        // when it *is* the folder above, which is already open: re-opening it
-        // would clear the standalone list just built.
-        if let data = UserDefaults.standard.data(forKey: Self.lastOpenedKey), data != folderData,
-           let url = resolveBookmark(data, opened: &opened),
-           FileManager.default.fileExists(atPath: url.path) {
-            openItem(url)
-            // `defaultSelection` takes the newest standalone file.
-            if let index = standaloneFiles.firstIndex(of: url) {
-                standaloneFiles.append(standaloneFiles.remove(at: index))
-            }
-        }
-        if workspaceURL == nil, let last = existing.last {
-            standaloneFiles = [last]
-            setWorkspace(last.deletingLastPathComponent())
-        }
-        // What we kept — the workspace folder and the files still listed —
-        // stays open for the app's lifetime, which is what those grants are for.
-        for url in opened where url != workspaceURL && !standaloneFiles.contains(url) {
-            url.stopAccessingSecurityScopedResource()
-        }
-    }
-
-    /// Resolves a security-scoped bookmark and opens its scope. URLs whose
-    /// scope actually opened are appended to `opened`, so the caller can close
-    /// the ones it discards — `stopAccessing…` must only balance a `start`
-    /// that returned true.
-    private func resolveBookmark(_ data: Data, opened: inout [URL]) -> URL? {
-        var stale = false
-        guard let url = try? URL(resolvingBookmarkData: data,
-                                 options: .withSecurityScope,
-                                 relativeTo: nil,
-                                 bookmarkDataIsStale: &stale)
-        else { return nil }
-        if url.startAccessingSecurityScopedResource() {
-            opened.append(url)
-        }
-        return url
-    }
-
-    private func setWorkspace(_ url: URL) {
-        monitor?.cancel()
-        monitor = nil
-        workspaceURL = url
-        // Standalone entries exist to keep sandbox-opened files visible when
-        // their own folder isn't readable — they belong to this workspace
-        // only. Leaving stale ones in would list files from a folder the user
-        // has moved on from.
-        standaloneFiles.removeAll { $0.deletingLastPathComponent() != url }
-        refreshFiles()
-        startMonitor(url)
-    }
-
-    func refreshFiles() {
-        guard let dir = workspaceURL else {
-            files = []
-            return
-        }
-        let contents = (try? FileManager.default.contentsOfDirectory(
-            at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])) ?? []
-        files = contents
-            .filter { ["md", "markdown"].contains($0.pathExtension.lowercased()) }
-            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
-        // Sandboxed single-file opens: the parent folder isn't readable, but
-        // the files themselves are — keep them listed.
-        for lone in standaloneFiles.reversed()
-        where !files.contains(lone) && FileManager.default.fileExists(atPath: lone.path) {
-            files.insert(lone, at: 0)
-        }
-    }
-
-    // MARK: Documents
-
-    func document(for url: URL) -> DocumentModel {
-        if let existing = documentCache[url] {
-            return existing
-        }
-        let document = DocumentModel(url: url)
-        documentCache[url] = document
-        return document
-    }
-
-    /// Creates an empty Untitled file and returns its URL (for the invoking
-    /// window to select).
-    @discardableResult
-    func newFile() -> URL? {
-        guard let dir = workspaceURL else { return nil }
-        let base = String(localized: "Untitled")
-        var candidate = dir.appendingPathComponent("\(base).md")
-        var counter = 2
-        while FileManager.default.fileExists(atPath: candidate.path) {
-            candidate = dir.appendingPathComponent("\(base) \(counter).md")
-            counter += 1
-        }
-        do {
-            try "".write(to: candidate, atomically: true, encoding: .utf8)
-        } catch {
-            return nil
-        }
-        refreshFiles()
-        return candidate
-    }
-
-    func saveAll() {
-        for document in documentCache.values {
-            document.saveNow()
-        }
-    }
-
-    // MARK: File-system monitoring
-
-    private func startMonitor(_ url: URL) {
-        let descriptor = open(url.path, O_EVTONLY)
-        guard descriptor >= 0 else { return }
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: descriptor,
-            eventMask: [.write, .rename, .delete],
-            queue: .main)
-        source.setEventHandler { [weak self] in
-            MainActor.assumeIsolated { self?.refreshFiles() }
-        }
-        source.setCancelHandler {
-            close(descriptor)
-        }
-        source.resume()
-        monitor = source
     }
 }
