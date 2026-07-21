@@ -62,6 +62,10 @@ struct SahifaApp: App {
 
     init() {
         FontLibrary.registerBundledFontsIfNeeded()
+        // One tab concept only. The app has its own in-window document tabs, so
+        // turn off macOS's native window-tabbing — no "Show Tab Bar" / "Merge
+        // All Windows", and new windows never merge into a title-bar tab group.
+        NSWindow.allowsAutomaticWindowTabbing = false
     }
 
     var body: some Scene {
@@ -106,8 +110,12 @@ struct SahifaCommands: Commands {
             .disabled(!model.canCreateFiles)
             Button("New Window") { openWindow(id: "main") }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
-            Button("New Tab") { WindowTabbing.openAsTab { openWindow(id: "main") } }
+            // An in-window tab, not a native window-tab: a fresh blank tab in
+            // the current window (same as the tab bar's +). Pick a file into it
+            // from the sidebar, or ⌘O to open one.
+            Button("New Tab") { windowState?.newBlankTab() }
                 .keyboardShortcut("t", modifiers: .command)
+                .disabled(windowState == nil)
             Divider()
             Button("Open File…") { model.chooseFile() }
                 .keyboardShortcut("o", modifiers: .command)
@@ -159,8 +167,25 @@ struct SahifaCommands: Commands {
             }
             .keyboardShortcut("s", modifiers: [.command, .control])
             .disabled(windowState == nil)
-            Button(windowState?.showPreview == true ? "Hide Preview" : "Show Preview") {
-                windowState?.showPreview.toggle()
+            // Radio group (inline picker → checkmarked items) so the menu
+            // shows which layout is current, not just a single on/off toggle.
+            // ⇧⌘P advances through the three, keeping the old preview shortcut.
+            Picker("View", selection: Binding(
+                get: { windowState?.viewMode ?? .editOnly },
+                set: { windowState?.viewMode = $0 }
+            )) {
+                Text("Edit Only").tag(ViewMode.editOnly)
+                Text("Dual View").tag(ViewMode.split)
+                Text("View Only").tag(ViewMode.previewOnly)
+            }
+            .pickerStyle(.inline)
+            .disabled(windowState == nil)
+            Button("Cycle View") {
+                if let windowState {
+                    let modes = ViewMode.allCases
+                    let next = (modes.firstIndex(of: windowState.viewMode)! + 1) % modes.count
+                    windowState.viewMode = modes[next]
+                }
             }
             .keyboardShortcut("p", modifiers: [.command, .shift])
             .disabled(windowState == nil)

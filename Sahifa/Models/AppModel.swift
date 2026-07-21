@@ -142,19 +142,22 @@ final class AppModel: ObservableObject {
     /// Open panels above. Folders become sources; files are selected where
     /// they already live, or filed under loose files.
     func openExternal(_ urls: [URL], preferring target: WindowState? = nil) {
-        var opened: DocumentID?
+        var opened: [DocumentID] = []
         for url in urls {
             if Self.isDirectory(url) {
                 addFolderSource(url)
-            } else if Self.isMarkdown(url) {
-                opened = adoptFile(url)
+            } else if Self.isMarkdown(url), let id = adoptFile(url) {
+                opened.append(id)
             }
         }
-        guard let document = opened else { return }
+        guard !opened.isEmpty else { return }
+        // Anything arriving from outside — Open File…, Finder, a drop — opens as
+        // a new tab (sidebar clicks are the "reuse the current tab" path). When
+        // no window exists yet (cold launch), the last one seeds it.
         if let windowState = target ?? frontWindowState {
-            windowState.selection = document
+            for id in opened { windowState.openInNewTab(id) }
         } else {
-            pendingSelection = document
+            pendingSelection = opened.last
         }
     }
 
@@ -209,6 +212,13 @@ final class AppModel: ObservableObject {
             current = current.appending(component)
             loadChildren(of: current)
         }
+    }
+
+    /// Reorders the source roots (drag-to-reorder in the sidebar) and persists
+    /// the new order so it survives relaunch.
+    func moveSources(fromOffsets: IndexSet, toOffset: Int) {
+        sources.move(fromOffsets: fromOffsets, toOffset: toOffset)
+        persistSources()
     }
 
     func removeSource(_ id: UUID) {
@@ -401,6 +411,12 @@ final class AppModel: ObservableObject {
     func takePendingSelection() -> DocumentID? {
         defer { pendingSelection = nil }
         return pendingSelection
+    }
+
+    /// Stages a document so the next window to open shows it — used when a tab
+    /// is dragged out of the bar to become its own window.
+    func stagePendingSelection(_ id: DocumentID) {
+        pendingSelection = id
     }
 
     /// Creates an empty Untitled document in `directory` — a folder in any

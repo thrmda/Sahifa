@@ -2,10 +2,36 @@ import Combine
 import Foundation
 import SwiftUI
 
+/// How the document area is divided between the editor and the rendered
+/// preview. `split` shows both side by side; the other two give one pane the
+/// whole width.
+enum ViewMode: String, CaseIterable {
+    case editOnly
+    case split
+    case previewOnly
+
+    var showsEditor: Bool { self != .previewOnly }
+    var showsPreview: Bool { self != .editOnly }
+}
+
+extension DocumentID {
+    /// A reserved source id used only for blank "New Tab" placeholders. No real
+    /// source ever uses it, so `store(for:)`/`document(for:)` return nil and the
+    /// tab shows the empty state until a file is chosen into it.
+    private static let blankTabSourceID = UUID(uuidString: "5A417FA0-0000-4000-A000-0000000000B1")!
+
+    /// A fresh blank tab. The random path keeps two blank tabs distinct.
+    static func blankTab() -> DocumentID {
+        DocumentID(sourceID: blankTabSourceID, path: UUID().uuidString)
+    }
+
+    var isBlankTab: Bool { sourceID == DocumentID.blankTabSourceID }
+}
+
 /// Per-window state: which document is selected, which folders are expanded,
-/// and whether the preview pane is shown. Sources stay app-wide in AppModel;
-/// documents come from its shared cache so two windows showing the same file
-/// edit one DocumentModel instead of fighting over it.
+/// and how the editor/preview panes are laid out. Sources stay app-wide in
+/// AppModel; documents come from its shared cache so two windows showing the
+/// same file edit one DocumentModel instead of fighting over it.
 @MainActor
 final class WindowState: ObservableObject {
 
@@ -20,16 +46,28 @@ final class WindowState: ObservableObject {
     @Published var renaming: DocumentID?
     @Published var renameText = ""
     /// Per-window; the last change also becomes the default for new windows.
-    @Published var showPreview: Bool {
-        didSet { UserDefaults.standard.set(showPreview, forKey: "showPreview") }
+    @Published var viewMode: ViewMode {
+        didSet { UserDefaults.standard.set(viewMode.rawValue, forKey: "viewMode") }
     }
+    /// Files open as tabs in THIS window, in the order they were opened; the
+    /// active tab is `selection`. These are lightweight in-window tabs (one
+    /// shared sidebar, instant switching, no new windows) — distinct from the
+    /// native window-tabs used for deliberate side-by-side work.
+    @Published var openTabs: [DocumentID] = []
     @Published var sidebarVisible = true
 
     private weak var model: AppModel?
     private var observations: Set<AnyCancellable> = []
 
     init() {
-        showPreview = UserDefaults.standard.bool(forKey: "showPreview")
+        // Carry forward the old boolean preference: a shown preview was the
+        // side-by-side split, a hidden one was editor-only.
+        if let raw = UserDefaults.standard.string(forKey: "viewMode"),
+           let mode = ViewMode(rawValue: raw) {
+            viewMode = mode
+        } else {
+            viewMode = UserDefaults.standard.bool(forKey: "showPreview") ? .split : .editOnly
+        }
     }
 
     func attach(_ model: AppModel) {
@@ -50,9 +88,14 @@ final class WindowState: ObservableObject {
         model.$childrenByDirectory
             .sink { [weak self] _ in
                 guard let self, let selected = self.selection else { return }
-                if !model.exists(selected) {
-                    self.selection = model.defaultSelection
-                }
+                // Only a real local file can vanish out from under us this way.
+                // A blank "New Tab" and a remote (GitHub) file both fail exists()
+                // by nature — dropping them here would wrongly yank the window
+                // off an empty tab or a repo file every time the tree reloads.
+                guard !selected.isBlankTab,
+                      model.source(selected.sourceID)?.isLocal == true,
+                      !model.exists(selected) else { return }
+                self.closeTab(selected)
             }
             .store(in: &observations)
         // A rename moves every ID underneath it, so each window rewrites its
@@ -60,9 +103,25 @@ final class WindowState: ObservableObject {
         model.documentMoved
             .sink { [weak self] move in
                 guard let self else { return }
+                // Where the active file sat before the list is rewritten, so a
+                // delete can fall back to the neighbouring tab rather than
+                // jumping to some unrelated default.
+                let activeIndex = self.selection.flatMap { self.openTabs.firstIndex(of: $0) }
+                // A rename remaps each affected tab in place; a delete
+                // (move.to == nil) drops it.
+                self.openTabs = self.openTabs.compactMap { id in
+                    guard id.isWithin(move.from) else { return id }
+                    return move.to.flatMap { id.remapping(from: move.from, to: $0) }
+                }
                 if let selection = self.selection, selection.isWithin(move.from) {
-                    self.selection = move.to.flatMap { selection.remapping(from: move.from, to: $0) }
-                        ?? model.defaultSelection
+                    if let to = move.to {
+                        self.selection = selection.remapping(from: move.from, to: to)
+                            ?? model.defaultSelection
+                    } else if !self.openTabs.isEmpty {
+                        self.selection = self.openTabs[min(activeIndex ?? 0, self.openTabs.count - 1)]
+                    } else {
+                        self.selection = model.defaultSelection
+                    }
                 }
                 self.expanded = Set(self.expanded.compactMap { id in
                     guard id.isWithin(move.from) else { return id }
@@ -116,8 +175,64 @@ final class WindowState: ObservableObject {
     private func openSelected() {
         guard document?.id != selection else { return }
         document?.saveNow()
+        // Safety net so the active file always has a tab. Deliberate opens go
+        // through showInCurrentTab/openInNewTab; this only catches selections
+        // set by other paths — the launch default, or a fallback after the
+        // shown file was renamed or deleted out from under the window.
+        if let selection, !openTabs.contains(selection) {
+            openTabs.append(selection)
+        }
         document = selection.flatMap { model?.document(for: $0) }
-        if let selection { reveal(selection) }
+        // A blank tab has no place in the tree to reveal.
+        if let selection, !selection.isBlankTab { reveal(selection) }
+    }
+
+    /// The everyday sidebar click: show a file in the CURRENT tab. If it is
+    /// already open, just activate that tab; otherwise the active tab navigates
+    /// to it in place — so browsing the tree reuses one tab instead of piling
+    /// them up. Opening a genuinely new tab is a separate, explicit action
+    /// (`openInNewTab`).
+    func showInCurrentTab(_ id: DocumentID) {
+        guard selection != id else { return }
+        if !openTabs.contains(id),
+           let active = selection,
+           let index = openTabs.firstIndex(of: active) {
+            openTabs[index] = id
+        }
+        // If nothing is open yet, openSelected() seeds the first tab.
+        selection = id
+    }
+
+    /// Opens a fresh empty tab beside the active one (⌘T, the tab bar's +). It
+    /// shows the empty state until a sidebar click fills it — browser-style.
+    func newBlankTab() {
+        let blank = DocumentID.blankTab()
+        let insertAt = selection.flatMap { openTabs.firstIndex(of: $0) }
+            .map { $0 + 1 } ?? openTabs.count
+        openTabs.insert(blank, at: insertAt)
+        selection = blank
+    }
+
+    /// Opens a file in a NEW tab beside the active one — Open File…, the
+    /// sidebar's "Open in New Tab", Finder, drag-drop. A file already open just
+    /// gets activated rather than duplicated.
+    func openInNewTab(_ id: DocumentID) {
+        guard !openTabs.contains(id) else { selection = id; return }
+        let insertAt = selection.flatMap { openTabs.firstIndex(of: $0) }
+            .map { $0 + 1 } ?? openTabs.count
+        openTabs.insert(id, at: insertAt)
+        selection = id
+    }
+
+    /// Closes one tab. Closing the active tab moves to its neighbour so the
+    /// editor keeps showing a file while others are still open; closing the
+    /// last one clears the editor back to the empty state.
+    func closeTab(_ id: DocumentID) {
+        guard let index = openTabs.firstIndex(of: id) else { return }
+        if selection == id { document?.saveNow() }
+        openTabs.remove(at: index)
+        guard selection == id else { return }
+        selection = openTabs.isEmpty ? nil : openTabs[min(index, openTabs.count - 1)]
     }
 
     /// Opens every folder above a document so a file opened from Finder or the

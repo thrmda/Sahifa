@@ -15,7 +15,7 @@ struct StatusBarView: View {
     /// A save failed and is waiting to try again. The banner explains it; this
     /// is the quiet reminder once the banner has been read.
     var isRetrying: Bool = false
-    @Binding var showPreview: Bool
+    @Binding var viewMode: ViewMode
     @AppStorage("focusMode") private var focusMode = false
     @AppStorage("showFormatBar") private var showFormatBar = true
 
@@ -65,17 +65,14 @@ struct StatusBarView: View {
             .help(focusMode ? Text("Exit Focus Mode") : Text("Focus Mode"))
             .accessibilityLabel(focusMode ? Text("Exit Focus Mode") : Text("Focus Mode"))
             .pointerCursor(.pointingHand)
-            Button {
-                showPreview.toggle()
-            } label: {
-                Image(systemName: showPreview
-                    ? "rectangle.righthalf.inset.filled"
-                    : "rectangle.split.2x1")
+            // Three-way view control: editor only, both panes, preview only.
+            // Grouped tighter than the surrounding items so it reads as one
+            // segmented control, with the active segment tinted.
+            HStack(spacing: 6) {
+                viewModeButton(.editOnly, "square.lefthalf.filled", Text("Edit Only"))
+                viewModeButton(.split, "rectangle.split.2x1", Text("Dual View"))
+                viewModeButton(.previewOnly, "eye", Text("View Only"))
             }
-            .buttonStyle(.borderless)
-            .help(showPreview ? Text("Hide Preview") : Text("Show Preview"))
-            .accessibilityLabel(showPreview ? Text("Hide Preview") : Text("Show Preview"))
-            .pointerCursor(.pointingHand)
         }
         .font(.custom("IBMPlexSans", size: 11))
         .foregroundStyle(Color.slate)
@@ -96,6 +93,23 @@ struct StatusBarView: View {
             guard !Task.isCancelled else { return }
             counts = computed
         }
+    }
+
+    /// One segment of the view-mode control. Selecting the active segment is a
+    /// no-op; the tint (sage vs slate) shows which layout is current.
+    private func viewModeButton(_ mode: ViewMode, _ symbol: String,
+                                _ label: Text) -> some View {
+        Button {
+            viewMode = mode
+        } label: {
+            Image(systemName: symbol)
+                .foregroundStyle(viewMode == mode ? Color.sage : Color.slate)
+        }
+        .buttonStyle(.borderless)
+        .help(label)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(viewMode == mode ? .isSelected : [])
+        .pointerCursor(.pointingHand)
     }
 }
 

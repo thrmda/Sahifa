@@ -131,6 +131,16 @@ func fileOperations() async {
     check("a new file is created", created != nil, String(describing: created))
     check("…and exists on disk",
           created.map { exists(($0.path as NSString).lastPathComponent) } == true)
+
+    // Drag-to-reorder the source roots.
+    let orderBefore = model.sources.map(\.id)
+    check("two source roots to reorder", orderBefore.count >= 2, "count \(orderBefore.count)")
+    if orderBefore.count >= 2 {
+        model.moveSources(fromOffsets: IndexSet(integer: 0), toOffset: orderBefore.count)
+        let orderAfter = model.sources.map(\.id)
+        check("moving the first root to the end reorders the list",
+              orderAfter.first == orderBefore[1] && orderAfter.last == orderBefore[0])
+    }
     _ = token
 }
 

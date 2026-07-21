@@ -1127,6 +1127,96 @@
           }
         }
       }
+    },
+    "Cycle View": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تبديل نمط العرض"
+          }
+        }
+      }
+    },
+    "Dual View": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "عرض مزدوج"
+          }
+        }
+      }
+    },
+    "Edit Only": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "التحرير فقط"
+          }
+        }
+      }
+    },
+    "GitHub repository": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مستودع GitHub"
+          }
+        }
+      }
+    },
+    "View Only": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "المعاينة فقط"
+          }
+        }
+      }
+    },
+    "Close Tab": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إغلاق علامة التبويب"
+          }
+        }
+      }
+    },
+    "Open in New Tab": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فتح في علامة تبويب جديدة"
+          }
+        }
+      }
+    },
+    "Local folder": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مجلد محلي"
+          }
+        }
+      }
+    },
+    "Opened files": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الملفات المفتوحة"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

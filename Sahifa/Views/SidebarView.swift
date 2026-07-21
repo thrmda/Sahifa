@@ -26,10 +26,25 @@ struct SidebarView: View {
             if model.sources.isEmpty {
                 emptyState
             } else {
-                List(selection: $windowState.selection) {
+                // A plain click shows the file in the CURRENT tab (browsing
+                // reuses one tab); "Open in New Tab" is the explicit way to add
+                // one. So the List's selection is a computed binding that routes
+                // clicks through showInCurrentTab rather than setting selection
+                // directly.
+                List(selection: Binding(
+                    get: { windowState.selection },
+                    set: { newValue in
+                        if let newValue { windowState.showInCurrentTab(newValue) }
+                        else { windowState.selection = nil }
+                    }
+                )) {
                     ForEach(model.sources) { source in
                         SourceDisclosure(source: source)
                     }
+                    // Drag a root up or down to reorder the sources; the order
+                    // persists. Only the top-level roots move — files inside a
+                    // folder aren't reorderable (their order is the folder's).
+                    .onMove { model.moveSources(fromOffsets: $0, toOffset: $1) }
                 }
                 .listStyle(.sidebar)
                 // In full screen the title bar collapses and the list would
@@ -107,11 +122,44 @@ private struct SourceDisclosure: View {
 
     private var root: DocumentID { DocumentID(sourceID: source.id, path: "") }
 
+    /// The leading type badge for a source root. Fixed width so the names line
+    /// up whichever icon a row carries. The GitHub mark is a bundled template
+    /// vector (SF Symbols ships no brand logos); the others are SF Symbols.
+    @ViewBuilder
+    private var sourceIcon: some View {
+        Group {
+            switch source.kind {
+            case .localFolder:
+                Image(systemName: "folder")
+                    .imageScale(.small)
+                    .foregroundStyle(Color.slate)
+                    .accessibilityLabel(Text("Local folder"))
+            case .gitHub:
+                Image("GitHubMark")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 12, height: 12)
+                    .foregroundStyle(Color.slate)
+                    .accessibilityLabel(Text("GitHub repository"))
+            case .looseFiles:
+                Image(systemName: "doc.on.doc")
+                    .imageScale(.small)
+                    .foregroundStyle(Color.slate)
+                    .accessibilityLabel(Text("Opened files"))
+            }
+        }
+        .frame(width: 15)
+    }
+
     var body: some View {
         DisclosureGroup(isExpanded: windowState.expansionBinding(for: root)) {
             NodeRows(parent: root)
         } label: {
             HStack(spacing: 6) {
+                // Leading type icon so each root reads at a glance: a folder for
+                // a local folder, the GitHub mark for a repo, stacked pages for
+                // the loose "Opened Files".
+                sourceIcon
                 Text(verbatim: chromeLabel(source.name, layoutDirection))
                     .font(.custom("IBMPlexSans-SmBld", size: 11))
                     .foregroundStyle(Color.slate)
@@ -120,13 +168,6 @@ private struct SourceDisclosure: View {
                 // Reserved status slot. Local folders only speak up when
                 // they've gone missing; a remote source will use this for
                 // syncing / offline / sign-in-needed without a relayout.
-                if source.kind == .gitHub {
-                    Image(systemName: "chevron.left.forwardslash.chevron.right")
-                        .imageScale(.small)
-                        .foregroundStyle(Color.slate)
-                        .help(Text("Read-only repository"))
-                        .accessibilityLabel(Text("Read-only repository"))
-                }
                 switch source.status {
                 case .ready:
                     EmptyView()
@@ -251,6 +292,10 @@ private struct NodeLabel: View {
         .padding(.vertical, 2)
         .contentShape(Rectangle())
         .contextMenu {
+            if !node.isDirectory {
+                Button("Open in New Tab") { windowState.openInNewTab(node.id) }
+                Divider()
+            }
             if canOrganise {
                 Button("Rename…") { beginRename() }
             }
@@ -327,6 +372,6 @@ private struct NodeLabel: View {
 /// prefixing an LRM/RLM strong mark — the equivalent of NOT using dir="auto"
 /// on chrome. Filenames therefore never flip the row, whatever script they
 /// start with.
-private func chromeLabel(_ text: String, _ direction: LayoutDirection) -> String {
+func chromeLabel(_ text: String, _ direction: LayoutDirection) -> String {
     (direction == .rightToLeft ? "\u{200F}" : "\u{200E}") + text
 }

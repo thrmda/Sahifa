@@ -129,6 +129,20 @@ struct ContentView: View {
 
     @ViewBuilder
     private var detail: some View {
+        // The tab strip lives here, above BOTH the editor and the empty state,
+        // so a blank "New Tab" (which has no document, hence no editor) still
+        // shows its tab.
+        VStack(spacing: 0) {
+            if !windowState.openTabs.isEmpty {
+                TabBarView()
+                Divider()
+            }
+            detailBody
+        }
+    }
+
+    @ViewBuilder
+    private var detailBody: some View {
         if let document = windowState.document {
             DocumentEditorView(document: document)
         } else if model.sources.isEmpty {
@@ -147,7 +161,7 @@ struct ContentView: View {
             ContentUnavailableView {
                 Label("No file selected", systemImage: "doc.text")
             } description: {
-                Text("Choose a Markdown file from the sidebar.")
+                Text("Choose a Markdown file from the sidebar, or open one in this tab.")
             }
             .background(Color.paper)
         }
@@ -161,7 +175,7 @@ private struct EditorPreviewSplit: View {
     let fontSize: Double
     let lineSpacing: Double
     let isEditable: Bool
-    let showPreview: Bool
+    let viewMode: ViewMode
 
     @AppStorage("previewFraction") private var previewFraction = 0.45
     @AppStorage("focusMode") private var focusMode = false
@@ -175,19 +189,26 @@ private struct EditorPreviewSplit: View {
     var body: some View {
         GeometryReader { geometry in
             let width = geometry.size.width
-            let editorWidth = showPreview
-                ? min(max(width * (1 - previewFraction), Self.minEditor), max(width - Self.minPreview, Self.minEditor))
-                : width
+            let isSplit = viewMode == .split
+            // Only the split needs a measured editor width; when a pane stands
+            // alone it fills the container.
+            let editorWidth = min(max(width * (1 - previewFraction), Self.minEditor),
+                                  max(width - Self.minPreview, Self.minEditor))
 
             HStack(spacing: 0) {
-                MarkdownEditor(text: $document.text, fontSize: fontSize,
-                               lineSpacing: lineSpacing, focusMode: focusMode,
-                               isEditable: isEditable,
-                               scrollSync: showPreview ? scrollSync : nil)
-                    .id(document.id)
-                    .frame(width: editorWidth)
-                if showPreview {
+                if viewMode.showsEditor {
+                    // Scroll sync only matters when both panes are visible.
+                    MarkdownEditor(text: $document.text, fontSize: fontSize,
+                                   lineSpacing: lineSpacing, focusMode: focusMode,
+                                   isEditable: isEditable,
+                                   scrollSync: isSplit ? scrollSync : nil)
+                        .id(document.id)
+                        .frame(width: isSplit ? editorWidth : width)
+                }
+                if isSplit {
                     splitHandle(containerWidth: width)
+                }
+                if viewMode.showsPreview {
                     // No `.id(...)`: recreating the WebView per file switch
                     // reloads the ~1.7 MB font-embedded shell and blanks the
                     // pane; the coordinator swaps content in place instead.
@@ -260,12 +281,10 @@ private func applyDevWindowFlags(model: AppModel, windowState: WindowState,
         cycleFiles(model: model, windowState: windowState, period: period, step: 0)
     }
     if index == 0 {
-        if args.contains("-devSecondWindow") {
+        // Native window-tabs are disabled now; -devSecondTab just opens a
+        // second window like -devSecondWindow (both exercise per-window state).
+        if args.contains("-devSecondWindow") || args.contains("-devSecondTab") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openWindow() }
-        } else if args.contains("-devSecondTab") {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                WindowTabbing.openAsTab(openWindow)
-            }
         }
     } else if args.contains("-devSecondWindow") || args.contains("-devSecondTab") {
         // Demonstrate per-window independence: the extra window shows the
@@ -497,13 +516,13 @@ struct DocumentEditorView: View {
                 EditorPreviewSplit(document: document, fontSize: fontSize,
                                    lineSpacing: lineSpacing,
                                    isEditable: !document.isReadOnly,
-                                   showPreview: windowState.showPreview)
+                                   viewMode: windowState.viewMode)
             }
             Divider()
             StatusBarView(text: document.text,
                           isSaving: document.isSaving,
                           isRetrying: document.saveStatus == .retrying,
-                          showPreview: $windowState.showPreview)
+                          viewMode: $windowState.viewMode)
         }
         .background(Color.paper)
     }
