@@ -22,4 +22,12 @@ extension Color {
     static let slate = Color("Slate")
     static let sage = Color("Sage")
     static let gold = Color("Gold")
+
+    /// A faint panel fill that groups a source and its files in the sidebar —
+    /// a touch lighter than `sand` in the dark theme, a touch darker in light.
+    /// A tint (not a fixed colour) so it rides on whatever `sand` resolves to.
+    static let grouped = Color(nsColor: NSColor(name: nil) { appearance in
+        let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        return dark ? NSColor(white: 1, alpha: 0.06) : NSColor(white: 0, alpha: 0.045)
+    })
 }

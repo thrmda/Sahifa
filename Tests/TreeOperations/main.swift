@@ -140,6 +140,13 @@ func fileOperations() async {
         let orderAfter = model.sources.map(\.id)
         check("moving the first root to the end reorders the list",
               orderAfter.first == orderBefore[1] && orderAfter.last == orderBefore[0])
+
+        // Move Up / Move Down — the collapse-proof reorder.
+        let a = model.sources.map(\.id)
+        model.moveSourceDown(a[0])
+        check("move down swaps a root with the next", model.sources.map(\.id) == [a[1], a[0]])
+        model.moveSourceUp(a[0])
+        check("move up puts it back", model.sources.map(\.id) == a)
     }
     _ = token
 }

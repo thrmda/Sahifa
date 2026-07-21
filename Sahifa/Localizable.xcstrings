@@ -1217,6 +1217,26 @@
           }
         }
       }
+    },
+    "Move Up": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تحريك لأعلى"
+          }
+        }
+      }
+    },
+    "Move Down": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تحريك لأسفل"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

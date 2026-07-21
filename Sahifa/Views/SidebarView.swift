@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Sources and their contents. Each added folder is a root that expands into
 /// its own tree; children are read when a folder is opened rather than up
@@ -20,6 +21,9 @@ import SwiftUI
 struct SidebarView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var windowState: WindowState
+    /// The source root currently being dragged to reorder. Held here so the
+    /// drag source and every drop target share one value.
+    @State private var draggingSource: UUID?
 
     var body: some View {
         Group {
@@ -39,12 +43,32 @@ struct SidebarView: View {
                     }
                 )) {
                     ForEach(model.sources) { source in
-                        SourceDisclosure(source: source)
+                        // Each root reads as its own module: the header sits on a
+                        // rounded panel, its files hang off an indent guide (see
+                        // NodeRows), and a gap separates roots. A collapsed root
+                        // is a single row, so it rounds all four corners; an
+                        // expanded one rounds only the top and lets its files
+                        // continue the panel (the last file rounds the bottom).
+                        let collapsed = !windowState.expanded.contains(
+                            DocumentID(sourceID: source.id, path: ""))
+                        // Drag a root's header to reorder; the order persists.
+                        // Each header is its own drop target, so a root drops
+                        // into any slot even next to a COLLAPSED root — which the
+                        // native List `.onMove` couldn't manage. Only the roots
+                        // move; files inside a folder keep the folder's order.
+                        SourceDisclosure(source: source, draggingSource: $draggingSource)
+                            .listRowBackground(
+                                UnevenRoundedRectangle(
+                                    topLeadingRadius: 8,
+                                    bottomLeadingRadius: collapsed ? 8 : 0,
+                                    bottomTrailingRadius: collapsed ? 8 : 0,
+                                    topTrailingRadius: 8,
+                                    style: .continuous
+                                )
+                                .fill(Color.grouped)
+                                .padding(.top, 7)
+                            )
                     }
-                    // Drag a root up or down to reorder the sources; the order
-                    // persists. Only the top-level roots move — files inside a
-                    // folder aren't reorderable (their order is the folder's).
-                    .onMove { model.moveSources(fromOffsets: $0, toOffset: $1) }
                 }
                 .listStyle(.sidebar)
                 // In full screen the title bar collapses and the list would
@@ -116,6 +140,7 @@ struct SidebarView: View {
 /// One source: a disclosure row that expands into the folder's tree.
 private struct SourceDisclosure: View {
     let source: Source
+    @Binding var draggingSource: UUID?
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var windowState: WindowState
     @Environment(\.layoutDirection) private var layoutDirection
@@ -151,9 +176,11 @@ private struct SourceDisclosure: View {
         .frame(width: 15)
     }
 
+    private var index: Int? { model.sources.firstIndex(where: { $0.id == source.id }) }
+
     var body: some View {
         DisclosureGroup(isExpanded: windowState.expansionBinding(for: root)) {
-            NodeRows(parent: root)
+            NodeRows(parent: root, isTail: true)
         } label: {
             HStack(spacing: 6) {
                 // Leading type icon so each root reads at a glance: a folder for
@@ -186,6 +213,15 @@ private struct SourceDisclosure: View {
                 }
             }
             .contextMenu {
+                // Dragging can't always drop past a collapsed root, so offer a
+                // reliable one-step reorder here too.
+                if model.sources.count > 1 {
+                    Button("Move Up") { model.moveSourceUp(source.id) }
+                        .disabled(index == 0)
+                    Button("Move Down") { model.moveSourceDown(source.id) }
+                        .disabled(index == model.sources.count - 1)
+                    Divider()
+                }
                 Button("Remove from Sidebar") { model.removeSource(source.id) }
                 if let root = source.rootURL, source.kind == .localFolder {
                     Button("Reveal in Finder") {
@@ -193,28 +229,90 @@ private struct SourceDisclosure: View {
                     }
                 }
             }
+            // Grab the header to drag the whole root; every header is a drop
+            // target, so it lands in any slot regardless of what's collapsed.
+            .onDrag {
+                draggingSource = source.id
+                return NSItemProvider(object: source.id.uuidString as NSString)
+            }
+            .onDrop(of: [.text], delegate: SourceDropDelegate(
+                target: source, model: model, dragging: $draggingSource))
         }
     }
 }
 
+/// Reorders source roots by dragging one header onto another. Because the drop
+/// target is a header (always present, even for a collapsed root), a root can
+/// land in any slot — unlike the native `.onMove`, which couldn't drop past a
+/// collapsed root. The list re-settles live as the drag passes each header.
+private struct SourceDropDelegate: DropDelegate {
+    let target: Source
+    let model: AppModel
+    @Binding var dragging: UUID?
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func dropEntered(info: DropInfo) {
+        guard let dragging, dragging != target.id,
+              let from = model.sources.firstIndex(where: { $0.id == dragging }),
+              let to = model.sources.firstIndex(where: { $0.id == target.id })
+        else { return }
+        withAnimation {
+            model.moveSources(fromOffsets: IndexSet(integer: from),
+                              toOffset: to > from ? to + 1 : to)
+        }
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        dragging = nil
+        return true
+    }
+}
+
 /// The children of one directory. Directories nest another DisclosureGroup;
-/// files are plain selectable rows.
+/// files are plain selectable rows. `isTail` marks the branch that ends its
+/// source's panel, so the very last visible row rounds the panel's bottom.
 private struct NodeRows: View {
     let parent: DocumentID
+    var isTail: Bool = false
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var windowState: WindowState
 
+    /// The grouped-panel fill for one row, rounding the bottom only when this is
+    /// the panel's final row, with the tree indent guide down the leading edge.
+    private func rowBackground(bottom: Bool) -> some View {
+        UnevenRoundedRectangle(
+            bottomLeadingRadius: bottom ? 8 : 0,
+            bottomTrailingRadius: bottom ? 8 : 0,
+            style: .continuous
+        )
+        .fill(Color.grouped)
+        .overlay(alignment: .leading) {
+            Rectangle().fill(Color.slate.opacity(0.22)).frame(width: 1)
+                .padding(.leading, 15)
+        }
+    }
+
     var body: some View {
         if let nodes = model.children(of: parent) {
-            ForEach(nodes) { node in
+            let lastIndex = nodes.count - 1
+            ForEach(Array(nodes.enumerated()), id: \.element.id) { index, node in
+                let rowIsTail = isTail && index == lastIndex
                 if node.isDirectory {
+                    let expanded = windowState.expanded.contains(node.id)
                     DisclosureGroup(isExpanded: windowState.expansionBinding(for: node.id)) {
-                        NodeRows(parent: node.id)
+                        NodeRows(parent: node.id, isTail: rowIsTail)
                     } label: {
                         NodeLabel(node: node)
                     }
+                    // A folder ends the panel only when it's the tail AND closed;
+                    // open, its own last child rounds the bottom instead.
+                    .listRowBackground(rowBackground(bottom: rowIsTail && !expanded))
                 } else {
                     NodeLabel(node: node).tag(node.id)
+                        .listRowBackground(rowBackground(bottom: rowIsTail))
                 }
             }
             if nodes.isEmpty {
@@ -222,6 +320,7 @@ private struct NodeRows: View {
                     .font(.custom("IBMPlexSans", size: 12))
                     .foregroundStyle(Color.slate)
                     .selectionDisabled()
+                    .listRowBackground(rowBackground(bottom: isTail))
             }
         } else if let failure = model.directoryErrors[parent] {
             // A folder that can't be fetched says so and offers another go,
@@ -235,11 +334,13 @@ private struct NodeRows: View {
             }
             .font(.custom("IBMPlexSans", size: 11))
             .selectionDisabled()
+            .listRowBackground(rowBackground(bottom: isTail))
         } else {
             Text("Loading…")
                 .font(.custom("IBMPlexSans", size: 12))
                 .foregroundStyle(Color.slate)
                 .selectionDisabled()
+                .listRowBackground(rowBackground(bottom: isTail))
                 .task { model.loadChildren(of: parent) }
         }
     }

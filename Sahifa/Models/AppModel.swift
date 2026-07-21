@@ -221,6 +221,21 @@ final class AppModel: ObservableObject {
         persistSources()
     }
 
+    /// One-step reorder that works regardless of which roots are collapsed —
+    /// the reliable path that the sidebar's Move Up / Move Down use, since the
+    /// native drag can't always drop past a collapsed root.
+    func moveSourceUp(_ id: UUID) {
+        guard let i = sources.firstIndex(where: { $0.id == id }), i > 0 else { return }
+        sources.swapAt(i, i - 1)
+        persistSources()
+    }
+
+    func moveSourceDown(_ id: UUID) {
+        guard let i = sources.firstIndex(where: { $0.id == id }), i < sources.count - 1 else { return }
+        sources.swapAt(i, i + 1)
+        persistSources()
+    }
+
     func removeSource(_ id: UUID) {
         guard let index = sources.firstIndex(where: { $0.id == id }) else { return }
         let source = sources[index]
