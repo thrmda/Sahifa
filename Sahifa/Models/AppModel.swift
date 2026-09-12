@@ -124,8 +124,11 @@ final class AppModel: ObservableObject {
         openExternal(panel.urls)
     }
 
+    /// Derived from `MarkdownFile.extensions` rather than listed again, so the
+    /// Open panel can never fall behind the extensions the tree recognises —
+    /// which is exactly how .mdx came to be browsable but greyed out in ⌘O.
     private static let markdownTypes: [UTType] =
-        [UTType(filenameExtension: "md"), UTType(filenameExtension: "markdown")].compactMap { $0 }
+        MarkdownFile.extensions.compactMap { UTType(filenameExtension: $0) }
 
     static let markdownExtensions = MarkdownFile.extensions
 
