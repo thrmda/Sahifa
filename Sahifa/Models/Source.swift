@@ -132,7 +132,7 @@ struct Source: Identifiable, Hashable {
 /// Matches the extensions declared in `UTImportedTypeDeclarations`; keep the
 /// two in step.
 enum MarkdownFile {
-    static let extensions = ["md", "markdown", "mdown", "mkd", "mkdn"]
+    static let extensions = ["md", "markdown", "mdown", "mkd", "mkdn", "mdx"]
 
     static func matches(_ name: String) -> Bool {
         extensions.contains((name as NSString).pathExtension.lowercased())

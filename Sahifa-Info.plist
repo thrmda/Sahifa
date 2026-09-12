@@ -34,6 +34,7 @@
 					<string>mdown</string>
 					<string>mkd</string>
 					<string>mkdn</string>
+					<string>mdx</string>
 				</array>
 				<key>public.mime-type</key>
 				<array>

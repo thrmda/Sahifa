@@ -65,14 +65,6 @@ struct ContentView: View {
             // Explicit placement: with .automatic, forced-RTL chrome
             // (uiLanguage = "ar") confuses NSToolbar's layout and the items
             // end up collapsed into the overflow menu.
-            ToolbarItem(placement: .navigation) {
-                Button {
-                    withAnimation { windowState.sidebarVisible.toggle() }
-                } label: {
-                    Label("Toggle Sidebar", systemImage: "sidebar.leading")
-                }
-                .help(Text("Toggle Sidebar"))
-            }
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
                     model.chooseFolder()
@@ -97,6 +89,18 @@ struct ContentView: View {
                 }
                 .disabled(!model.canCreateFiles)
                 .help(Text("New File"))
+                // The sidebar toggle belongs directly above the sidebar it
+                // controls. The SwiftUI content mirrors under RTL (sidebar sits
+                // on the trailing/right edge), but NSToolbar does NOT mirror —
+                // a .navigation-placed item would strand this on the physical
+                // left, opposite the sidebar. Placing it trailing, and last in
+                // the group, keeps it at the top-right corner over the sidebar.
+                Button {
+                    withAnimation { windowState.sidebarVisible.toggle() }
+                } label: {
+                    Label("Toggle Sidebar", systemImage: "sidebar.leading")
+                }
+                .help(Text("Toggle Sidebar"))
             }
         }
     }
