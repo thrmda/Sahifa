@@ -132,6 +132,33 @@ func run() async {
     w.closeTab(blank2)
     check("closing a blank tab removes it", w.openTabs.contains(blank2) == false)
     check("…and falls back to a file tab", w.selection?.isBlankTab == false)
+
+    // ⌘W (File ▸ Close Tab) closes the ACTIVE tab, and closes the window once
+    // that was the last one. The command can't ask AppKit to close a window
+    // from here, so this covers the state it keys off: closing the active tab
+    // repeatedly empties the strip, and `openTabs.isEmpty` is the signal.
+    w.selection = nil
+    w.openTabs = []
+    w.showInCurrentTab(id("a.md"))
+    w.openInNewTab(id("b.md"))
+    check("two tabs before the ⌘W run", w.openTabs == [id("a.md"), id("b.md")])
+
+    w.closeTab(w.selection!)
+    check("⌘W on the last-opened tab closes it", w.openTabs == [id("a.md")])
+    check("…the window still has a tab, so it stays open", !w.openTabs.isEmpty)
+    check("…and a neighbour became active", w.selection == id("a.md"))
+
+    w.closeTab(w.selection!)
+    check("⌘W on the only remaining tab closes it", w.openTabs.isEmpty)
+    check("…which is the signal to close the window", w.openTabs.isEmpty)
+    check("…and nothing is left selected", w.selection == nil)
+
+    // A blank tab is the last tab too — ⌘W on it must not leave a stray tab.
+    w.newBlankTab()
+    check("a lone blank tab is the only tab", w.openTabs.count == 1)
+    w.closeTab(w.selection!)
+    check("⌘W on a lone blank tab empties the strip", w.openTabs.isEmpty)
+    check("…and clears the selection", w.selection == nil)
 }
 
 await run()

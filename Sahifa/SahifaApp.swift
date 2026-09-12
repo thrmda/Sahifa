@@ -141,7 +141,31 @@ struct SahifaCommands: Commands {
             }
             .disabled(model.recentItems.isEmpty)
         }
-        CommandGroup(after: .saveItem) {
+        // SwiftUI puts Close (⌘W) and Close All (⌥⌘W) in .saveItem, immediately
+        // before the app's own Save. Replacing the whole group is the only way
+        // to take ⌘W off "close the window" — so Save is re-added here rather
+        // than in a group of its own.
+        CommandGroup(replacing: .saveItem) {
+            // Browser-style: ⌘W closes the active tab, and closing the last tab
+            // closes the window rather than leaving an empty one behind.
+            Button("Close Tab") {
+                guard let windowState, let active = windowState.selection else { return }
+                windowState.closeTab(active)
+                if windowState.openTabs.isEmpty {
+                    NSApp.keyWindow?.performClose(nil)
+                }
+            }
+            .keyboardShortcut("w", modifiers: .command)
+            .disabled(windowState == nil)
+            Button("Close Window") { NSApp.keyWindow?.performClose(nil) }
+                .keyboardShortcut("w", modifiers: [.command, .shift])
+            Button("Close All") {
+                for window in NSApp.windows where window.isVisible {
+                    window.performClose(nil)
+                }
+            }
+            .keyboardShortcut("w", modifiers: [.command, .option])
+            Divider()
             Button("Save") { model.saveAll() }
                 .keyboardShortcut("s", modifiers: .command)
             Divider()

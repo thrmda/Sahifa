@@ -1188,6 +1188,26 @@
         }
       }
     },
+    "Close Window": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إغلاق النافذة"
+          }
+        }
+      }
+    },
+    "Close All": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إغلاق الكل"
+          }
+        }
+      }
+    },
     "Open in New Tab": {
       "localizations": {
         "ar": {
