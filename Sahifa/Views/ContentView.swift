@@ -49,9 +49,19 @@ struct ContentView: View {
             return accepted
         }
         // Finder "Open With"/Dock drops land on the frontmost window.
-        .background(KeyWindowTracker { model.frontWindowState = windowState })
+        .background(KeyWindowTracker(
+            onBecomeKey: { model.frontWindowState = windowState },
+            // Only give up the slot if this window still holds it — when
+            // another window took over first, it is the front one now.
+            onWindowGone: {
+                if model.frontWindowState === windowState { model.frontWindowState = nil }
+            }
+        ))
         .onAppear {
             model.frontWindowState = windowState
+            // The model can't reach SwiftUI's openWindow on its own, and needs
+            // it to receive a Finder open once every window has been closed.
+            model.requestNewWindow = { openWindow(id: "main") }
             windowState.attach(model)
             Exporter.shared.handleCLIFlagsIfPresent(markdown: windowState.document?.text,
                                                     title: windowState.document?.exportName ?? "Untitled")
@@ -438,21 +448,30 @@ private struct ConflictBanner: View {
 /// which window's state should receive externally opened files (Finder
 /// "Open With", Dock drops). SwiftUI offers no direct NSWindow handle; this
 /// is the standard bridge.
+///
+/// It also reports the window going away. SwiftUI keeps a closed window's
+/// WindowState alive, so a weak reference to it stays non-nil and would still
+/// look like somewhere to put a file — a Finder open with every window closed
+/// then vanished into a window nobody can see.
 private struct KeyWindowTracker: NSViewRepresentable {
     let onBecomeKey: () -> Void
+    let onWindowGone: () -> Void
 
     func makeNSView(context: Context) -> TrackerView {
         let view = TrackerView()
         view.onBecomeKey = onBecomeKey
+        view.onWindowGone = onWindowGone
         return view
     }
 
     func updateNSView(_ nsView: TrackerView, context: Context) {
         nsView.onBecomeKey = onBecomeKey
+        nsView.onWindowGone = onWindowGone
     }
 
     final class TrackerView: NSView {
         var onBecomeKey: (() -> Void)?
+        var onWindowGone: (() -> Void)?
         private var observer: NSObjectProtocol?
 
         override func viewDidMoveToWindow() {
@@ -461,7 +480,8 @@ private struct KeyWindowTracker: NSViewRepresentable {
                 NotificationCenter.default.removeObserver(observer)
                 self.observer = nil
             }
-            guard let window else { return }
+            // Pulled out of the window hierarchy: the window closed.
+            guard let window else { onWindowGone?(); return }
             if window.isKeyWindow { onBecomeKey?() }
             observer = NotificationCenter.default.addObserver(
                 forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main

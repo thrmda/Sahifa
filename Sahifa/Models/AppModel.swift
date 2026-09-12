@@ -47,6 +47,12 @@ final class AppModel: ObservableObject {
     /// External open that arrived before any window attached (cold launch via
     /// Finder); consumed by the first WindowState.attach.
     private var pendingSelection: DocumentID?
+    /// Opens a fresh window. Supplied by the window layer because SwiftUI's
+    /// `openWindow` lives in the view environment, and needed here for the one
+    /// case with no window to hand a file to: the app running, every window
+    /// closed. Set on the first window's appear, so it is in place well before
+    /// the app can reach that state.
+    var requestNewWindow: (() -> Void)?
 
     /// Fires when a source is added, so a window with nothing open adopts it.
     /// Windows already showing a document are left alone.
@@ -160,7 +166,32 @@ final class AppModel: ObservableObject {
         if let windowState = target ?? frontWindowState {
             for id in opened { windowState.openInNewTab(id) }
         } else {
+            // No window to put a tab in — either a cold launch from Finder, or
+            // the app running with every window closed. Stage the file and ask
+            // for a window to receive it; the first attach consumes the staged
+            // selection (the same route a detached tab takes). On cold launch
+            // the window is already on its way, and openWindow is a no-op then.
             pendingSelection = opened.last
+            if let requestNewWindow { requestNewWindow() } else { Self.openWindowViaNewWindowCommand() }
+        }
+    }
+
+    /// Opens a window when SwiftUI's `openWindow` isn't reachable yet: a Finder
+    /// launch delivers the file before any window — and so before any view
+    /// environment — exists, and with the group not handling external events
+    /// SwiftUI won't make one on its own. The File ▸ New Window command does
+    /// exactly the right thing and is built at launch, so drive that. Matched
+    /// by its ⇧⌘N shortcut, not its title, which is localized.
+    private static func openWindowViaNewWindowCommand() {
+        guard let mainMenu = NSApp.mainMenu else { return }
+        for top in mainMenu.items {
+            guard let submenu = top.submenu else { continue }
+            for item in submenu.items
+            where item.keyEquivalent == "n"
+                && item.keyEquivalentModifierMask == [.command, .shift] {
+                submenu.performActionForItem(at: submenu.index(of: item))
+                return
+            }
         }
     }
 

@@ -75,6 +75,12 @@ struct SahifaApp: App {
                 .applyUILanguage(uiLanguage)
                 .frame(minWidth: 760, minHeight: 460)
         }
+        // Opening a file from Finder used to produce a stray SECOND window: a
+        // WindowGroup spawns a fresh one for every external open event, on top
+        // of the tab AppDelegate.application(_:open:) had already added to the
+        // window in front. Matching nothing stops that and leaves the delegate
+        // as the single route in — it opens a window itself when none exists.
+        .handlesExternalEvents(matching: [])
         .commands {
             SahifaCommands(model: model)
         }
