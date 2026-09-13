@@ -12,7 +12,7 @@ enum RepositoryPrompt {
         let alert = NSAlert()
         alert.messageText = String(localized: "Add a GitHub Repository")
         alert.informativeText = String(localized:
-            "Enter it as owner/repository — for example apple/swift-markdown. Public repositories can be read without signing in; the files are opened read-only.")
+            "Enter it as owner/repository - for example apple/swift-markdown. Public repositories can be read without signing in; the files are opened read-only.")
         alert.addButton(withTitle: String(localized: "Add"))
         alert.addButton(withTitle: String(localized: "Cancel"))
 

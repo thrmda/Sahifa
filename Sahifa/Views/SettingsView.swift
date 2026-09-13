@@ -83,7 +83,7 @@ private struct GitHubConnectSheet: View {
         VStack(alignment: .leading, spacing: Space.l) {
             Text("Connect GitHub")
                 .font(.headline)
-            Text("Create a fine-grained token limited to the repositories you want Sahifa to reach, with Contents set to Read and write. Give it a short expiry — you can always make another.")
+            Text("Create a fine-grained token limited to the repositories you want Sahifa to reach, with Contents set to Read and write. Give it a short expiry - you can always make another.")
                 .foregroundStyle(Color.slate)
                 .fixedSize(horizontal: false, vertical: true)
             Link("Create a token on GitHub…", destination: Self.tokenPage)

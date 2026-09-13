@@ -208,8 +208,8 @@ private struct SourceDisclosure: View {
                     Image(systemName: "person.crop.circle.badge.exclamationmark")
                         .imageScale(.small)
                         .foregroundStyle(Color.warning)
-                        .help(Text("Sign-in needed — reconnect in Settings"))
-                        .accessibilityLabel(Text("Sign-in needed — reconnect in Settings"))
+                        .help(Text("Sign-in needed - reconnect in Settings"))
+                        .accessibilityLabel(Text("Sign-in needed - reconnect in Settings"))
                 }
             }
             .contextMenu {

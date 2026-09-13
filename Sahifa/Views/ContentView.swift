@@ -391,9 +391,9 @@ private struct SaveFailedBanner: View {
                 .foregroundStyle(Color.warning)
                 .accessibilityHidden(true)
             if document.saveStatus == .retrying {
-                Text("Couldn't save — your changes are kept and Sahifa is retrying.")
+                Text("Couldn't save - your changes are kept and Sahifa is retrying.")
             } else {
-                Text("Couldn't save — your changes are kept. Check your connection or sign-in.")
+                Text("Couldn't save - your changes are kept. Check your connection or sign-in.")
             }
             Spacer(minLength: 0)
             Button("Retry Now") { document.retrySave() }

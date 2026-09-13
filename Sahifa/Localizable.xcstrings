@@ -203,32 +203,32 @@
         }
       }
     },
-    "Couldn't save — your changes are kept and Sahifa is retrying.": {
+    "Couldn't save - your changes are kept and Sahifa is retrying.": {
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "تعذّر الحفظ — تغييراتك محفوظة وتحاول صحيفة مجددًا."
+            "value": "تعذّر الحفظ - تغييراتك محفوظة وتحاول صحيفة مجددًا."
           }
         }
       }
     },
-    "Couldn't save — your changes are kept. Check your connection or sign-in.": {
+    "Couldn't save - your changes are kept. Check your connection or sign-in.": {
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "تعذّر الحفظ — تغييراتك محفوظة. تحقق من اتصالك أو تسجيل دخولك."
+            "value": "تعذّر الحفظ - تغييراتك محفوظة. تحقق من اتصالك أو تسجيل دخولك."
           }
         }
       }
     },
-    "Create a fine-grained token limited to the repositories you want Sahifa to reach, with Contents set to Read and write. Give it a short expiry — you can always make another.": {
+    "Create a fine-grained token limited to the repositories you want Sahifa to reach, with Contents set to Read and write. Give it a short expiry - you can always make another.": {
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "أنشئ رمزًا دقيق الصلاحيات مقصورًا على المستودعات التي تريد أن تصل إليها صحيفة، مع ضبط Contents على القراءة والكتابة. اجعل مدته قصيرة — يمكنك دائمًا إنشاء غيره."
+            "value": "أنشئ رمزًا دقيق الصلاحيات مقصورًا على المستودعات التي تريد أن تصل إليها صحيفة، مع ضبط Contents على القراءة والكتابة. اجعل مدته قصيرة - يمكنك دائمًا إنشاء غيره."
           }
         }
       }
@@ -314,12 +314,12 @@
         }
       }
     },
-    "Enter it as owner/repository — for example apple/swift-markdown. Public repositories can be read without signing in; the files are opened read-only.": {
+    "Enter it as owner/repository - for example apple/swift-markdown. Public repositories can be read without signing in; the files are opened read-only.": {
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "أدخله بالصيغة المالك/المستودع — مثل apple/swift-markdown. يمكن قراءة المستودعات العامة دون تسجيل الدخول، وتُفتح الملفات للقراءة فقط."
+            "value": "أدخله بالصيغة المالك/المستودع - مثل apple/swift-markdown. يمكن قراءة المستودعات العامة دون تسجيل الدخول، وتُفتح الملفات للقراءة فقط."
           }
         }
       }
@@ -965,12 +965,12 @@
         }
       }
     },
-    "Sign-in needed — reconnect in Settings": {
+    "Sign-in needed - reconnect in Settings": {
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "يلزم تسجيل الدخول — أعد الاتصال من الإعدادات"
+            "value": "يلزم تسجيل الدخول - أعد الاتصال من الإعدادات"
           }
         }
       }

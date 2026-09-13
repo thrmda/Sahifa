@@ -294,7 +294,7 @@ private func send(_ selector: Selector) {
 private func recentLabel(_ item: AppModel.RecentItem,
                          among items: [AppModel.RecentItem]) -> String {
     guard items.filter({ $0.name == item.name }).count > 1 else { return item.name }
-    return "\(item.name) — \(item.parentName)"
+    return "\(item.name) - \(item.parentName)"
 }
 
 extension View {
