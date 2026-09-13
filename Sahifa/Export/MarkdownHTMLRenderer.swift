@@ -140,6 +140,26 @@ enum MarkdownHTMLRenderer {
         return rules
     }
 
+    /// Layout the PDF and a printed page need but the on-screen reading
+    /// measure doesn't: full width, and code that wraps instead of scrolling
+    /// sideways. Declared once here because it is needed in two places that
+    /// can't share a stylesheet — the `@media print` block below, and the
+    /// style PDFCapture injects by hand (createPDF renders SCREEN media, so
+    /// the print block never fires for an exported PDF).
+    static let printLayout = [
+        "main { max-width: none; margin: 0 }",
+        "pre { white-space: pre-wrap; word-wrap: break-word; overflow-x: visible }",
+    ]
+
+    /// The same declarations with `!important` on each, for injecting over an
+    /// already-cascaded page.
+    static var printLayoutImportant: String {
+        printLayout
+            .map { $0.replacingOccurrences(of: ";", with: " !important;")
+                     .replacingOccurrences(of: " }", with: " !important }") }
+            .joined()
+    }
+
     /// Brand palette (Assets.xcassets values), light + dark.
     private static let css = """
     :root {
@@ -192,7 +212,7 @@ enum MarkdownHTMLRenderer {
     em.rtl { font-style: normal; font-weight: 500; }
     strong em.rtl, em.rtl strong { font-weight: 700; }
     pre {
-      background: var(--panel); border-radius: 8px; padding: 0.85em 1em;
+      background: var(--panel); border-radius: \(Int(Radius.panel))px; padding: 0.85em 1em;
       overflow-x: auto; text-align: left;
     }
     code {
@@ -200,7 +220,7 @@ enum MarkdownHTMLRenderer {
       font-size: 0.92em;
     }
     :not(pre) > code {
-      background: var(--panel); border-radius: 4px; padding: 0.08em 0.35em;
+      background: var(--panel); border-radius: \(Int(Radius.chip))px; padding: 0.08em 0.35em;
     }
     blockquote {
       margin: 0.8em 0; padding-inline-start: 1em; margin-inline-start: 0;
@@ -223,10 +243,9 @@ enum MarkdownHTMLRenderer {
         --warning: #A33A2A;
       }
       body { background: #fff; }
-      main { max-width: none; margin: 0; padding: 0; }
+      \(printLayout.joined(separator: "\n  "))
       h1, h2, h3, h4, h5, h6 { break-after: avoid; }
       pre, blockquote, table, img, li { break-inside: avoid; }
-      pre { white-space: pre-wrap; word-wrap: break-word; }
     }
     """
 }
