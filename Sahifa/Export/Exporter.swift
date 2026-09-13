@@ -129,7 +129,7 @@ private final class PDFCapture: NSObject, WKNavigationDelegate {
           var s = document.createElement('style');
           s.textContent = ':root{--paper:#FAF6EC!important;--sand:#EBE4D4!important;\
         --ink:#182642!important;--slate:#5B6270!important;--sage:#4E7168!important;\
-        --gold:#8A6D3B!important;}';
+        --gold:#7D6231!important;}';
           document.head.appendChild(s);
         })();
         """

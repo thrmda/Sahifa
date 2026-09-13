@@ -144,12 +144,14 @@ enum MarkdownHTMLRenderer {
     private static let css = """
     :root {
       --paper: #FAF6EC; --sand: #EBE4D4; --ink: #182642;
-      --slate: #5B6270; --sage: #4E7168; --gold: #8A6D3B;
+      --slate: #5B6270; --sage: #4E7168; --gold: #7D6231;
+      --warning: #A33A2A;
     }
     @media (prefers-color-scheme: dark) {
       :root {
         --paper: #131D31; --sand: #20304F; --ink: #F4EFE4;
         --slate: #99A3B5; --sage: #7BA99C; --gold: #C9A45E;
+        --warning: #E2907A;
       }
     }
     * { box-sizing: border-box; }
@@ -210,7 +212,8 @@ enum MarkdownHTMLRenderer {
     @media print {
       :root {
         --paper: #FAF6EC; --sand: #EBE4D4; --ink: #182642;
-        --slate: #5B6270; --sage: #4E7168; --gold: #8A6D3B;
+        --slate: #5B6270; --sage: #4E7168; --gold: #7D6231;
+        --warning: #A33A2A;
       }
       body { background: #fff; }
       main { max-width: none; margin: 0; padding: 0; }

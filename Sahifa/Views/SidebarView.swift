@@ -201,13 +201,13 @@ private struct SourceDisclosure: View {
                 case .missing:
                     Image(systemName: "exclamationmark.triangle.fill")
                         .imageScale(.small)
-                        .foregroundStyle(Color.gold)
+                        .foregroundStyle(Color.warning)
                         .help(Text("This folder is missing"))
                         .accessibilityLabel(Text("This folder is missing"))
                 case .needsSignIn:
                     Image(systemName: "person.crop.circle.badge.exclamationmark")
                         .imageScale(.small)
-                        .foregroundStyle(Color.gold)
+                        .foregroundStyle(Color.warning)
                         .help(Text("Sign-in needed — reconnect in Settings"))
                         .accessibilityLabel(Text("Sign-in needed — reconnect in Settings"))
                 }
@@ -327,7 +327,7 @@ private struct NodeRows: View {
             // rather than sitting on a spinner that never resolves.
             VStack(alignment: .leading, spacing: 4) {
                 Text(verbatim: failure)
-                    .foregroundStyle(Color.gold)
+                    .foregroundStyle(Color.warning)
                     .lineLimit(3)
                 Button("Try Again") { model.loadChildren(of: parent, force: true) }
                     .buttonStyle(.link)

@@ -12,7 +12,12 @@ enum Brand {
     static var ink: NSColor { NSColor(named: "Ink") ?? NSColor(srgbRed: 0.094, green: 0.149, blue: 0.259, alpha: 1) }
     static var slate: NSColor { NSColor(named: "Slate") ?? NSColor(srgbRed: 0.357, green: 0.384, blue: 0.439, alpha: 1) }
     static var sage: NSColor { NSColor(named: "Sage") ?? NSColor(srgbRed: 0.306, green: 0.443, blue: 0.408, alpha: 1) }
-    static var gold: NSColor { NSColor(named: "Gold") ?? NSColor(srgbRed: 0.541, green: 0.427, blue: 0.231, alpha: 1) }
+    /// Links, and only links. Gold used to carry warnings too, which made a
+    /// dead link and a failed save look like the same thing.
+    static var gold: NSColor { NSColor(named: "Gold") ?? NSColor(srgbRed: 0.490, green: 0.384, blue: 0.192, alpha: 1) }
+    /// Something needs attention: a save that couldn't land, an expired
+    /// account, a folder that has gone missing.
+    static var warning: NSColor { NSColor(named: "Warning") ?? NSColor(srgbRed: 0.639, green: 0.227, blue: 0.165, alpha: 1) }
 }
 
 extension Color {
@@ -22,6 +27,7 @@ extension Color {
     static let slate = Color("Slate")
     static let sage = Color("Sage")
     static let gold = Color("Gold")
+    static let warning = Color("Warning")
 
     /// A faint panel fill that groups a source and its files in the sidebar —
     /// a touch lighter than `sand` in the dark theme, a touch darker in light.

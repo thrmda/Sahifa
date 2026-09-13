@@ -388,7 +388,7 @@ private struct SaveFailedBanner: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "arrow.trianglehead.2.clockwise.rotate.90")
-                .foregroundStyle(Color.gold)
+                .foregroundStyle(Color.warning)
                 .accessibilityHidden(true)
             if document.saveStatus == .retrying {
                 Text("Couldn't save — your changes are kept and Sahifa is retrying.")
@@ -435,7 +435,7 @@ private struct ConflictBanner: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(Color.gold)
+                .foregroundStyle(Color.warning)
                 .accessibilityHidden(true)   // the sentence beside it says this
             Text("This file changed on disk. Autosave is paused.")
                 .lineLimit(2)

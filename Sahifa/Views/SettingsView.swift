@@ -53,13 +53,13 @@ private struct GitHubAccountRow: View {
         case .expired(let login):
             if let login {
                 Text("\(login) no longer has access. Reconnect to keep saving.")
-                    .foregroundStyle(Color.gold)
+                    .foregroundStyle(Color.warning)
             } else {
                 Text("The token no longer has access. Reconnect to keep saving.")
-                    .foregroundStyle(Color.gold)
+                    .foregroundStyle(Color.warning)
             }
         case .failed(let reason):
-            Text(verbatim: reason).foregroundStyle(Color.gold)
+            Text(verbatim: reason).foregroundStyle(Color.warning)
         }
     }
 }
@@ -92,7 +92,7 @@ private struct GitHubConnectSheet: View {
                 .disabled(isChecking)
             if case .failed(let reason) = account.state {
                 Text(verbatim: reason)
-                    .foregroundStyle(Color.gold)
+                    .foregroundStyle(Color.warning)
                     .fixedSize(horizontal: false, vertical: true)
             }
             HStack(spacing: 10) {

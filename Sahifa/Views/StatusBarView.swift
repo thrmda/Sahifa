@@ -39,7 +39,7 @@ struct StatusBarView: View {
                 Text("Saving…")
             } else if isRetrying {
                 Text("Save pending…")
-                    .foregroundStyle(Color.gold)
+                    .foregroundStyle(Color.warning)
             }
             Spacer(minLength: 0)
             Button {
