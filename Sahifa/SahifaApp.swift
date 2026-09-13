@@ -14,9 +14,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Reopening from the Dock with all windows closed should bring a window
-    /// back rather than leave a menu-bar-only app.
+    /// back rather than leave a menu-bar-only app — but only then. Answering
+    /// `true` unconditionally let AppKit add a second window on every reopen,
+    /// including a plain `open -a` while a window was already up.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
-        true
+        // `hasVisibleWindows` is not trustworthy here: AppKit reports true for
+        // an app whose only window is miniaturized, which would leave a Dock
+        // click doing nothing at all. Work it out from the windows themselves.
+        if sender.windows.contains(where: { $0.isVisible && !$0.isMiniaturized }) {
+            return false
+        }
+        // Nothing on screen but something in the Dock: restoring that is
+        // plainly what the click meant, rather than a fresh window beside it.
+        if let miniaturized = sender.windows.first(where: \.isMiniaturized) {
+            miniaturized.deminiaturize(nil)
+            return false
+        }
+        return true
     }
 
     /// A local save finishes before the app can quit anyway. A save going over
