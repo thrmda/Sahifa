@@ -104,6 +104,9 @@ enum MarkdownHTMLRenderer {
         EmbeddedFace(file: "IBMPlexSans-Italic",        family: "IBM Plex Sans",        weight: 400, italic: true),
         EmbeddedFace(file: "IBMPlexSans-BoldItalic",    family: "IBM Plex Sans",        weight: 700, italic: true),
         EmbeddedFace(file: "IBMPlexSansArabic-Regular", family: "IBM Plex Sans Arabic", weight: 400, italic: false),
+        // Arabic emphasis is a weight step, so 500 has to be a real face —
+        // left out, the browser would synthesise it or round to 400/700.
+        EmbeddedFace(file: "IBMPlexSansArabic-Medium",  family: "IBM Plex Sans Arabic", weight: 500, italic: false),
         EmbeddedFace(file: "IBMPlexSansArabic-Bold",    family: "IBM Plex Sans Arabic", weight: 700, italic: false),
         EmbeddedFace(file: "IBMPlexMono-Regular",       family: "IBM Plex Mono",        weight: 400, italic: false),
         EmbeddedFace(file: "IBMPlexMono-Bold",          family: "IBM Plex Mono",        weight: 700, italic: false),
@@ -169,6 +172,11 @@ enum MarkdownHTMLRenderer {
     p, ul, ol { margin: 0.65em 0; }
     li { margin: 0.25em 0; }
     a { color: var(--gold); }
+    /* Arabic has no italic tradition and Plex Sans Arabic ships no italic
+       face, so a slant here would either do nothing or be faked. Emphasis
+       steps up a weight instead — the same signal the editor applies. */
+    em.rtl { font-style: normal; font-weight: 500; }
+    strong em.rtl, em.rtl strong { font-weight: 700; }
     pre {
       background: var(--sand); border-radius: 8px; padding: 0.85em 1em;
       overflow-x: auto; text-align: left;
@@ -320,8 +328,14 @@ private struct HTMLVisitor: MarkupVisitor {
         escapeHTML(text.string)
     }
 
+    /// Emphasis whose own text is Arabic is tagged so the CSS can mark it by
+    /// weight instead of a slant — matching the editor, which has no Arabic
+    /// italic face to reach for. Tagged from the run's own direction rather
+    /// than the paragraph's, so an Arabic phrase inside an English sentence
+    /// (and the reverse) is still marked the way its own script expects.
     mutating func visitEmphasis(_ emphasis: Emphasis) -> String {
-        "<em>\(children(emphasis))</em>"
+        let rtl = BidiDirection.firstStrong(in: contentText(emphasis)) == .rightToLeft
+        return "<em\(rtl ? " class=\"rtl\"" : "")>\(children(emphasis))</em>"
     }
 
     mutating func visitStrong(_ strong: Strong) -> String {

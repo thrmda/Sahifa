@@ -20,6 +20,22 @@ func makeEditor(_ text: String, select: NSRange) -> BidiTextView {
     return view
 }
 
+/// Registers the bundled Plex faces from the built app. FontLibrary's own
+/// loader reads Bundle.main, which for this CLI binary is not the app, so the
+/// font-dependent checks would otherwise measure system fallbacks.
+@discardableResult
+func registerPlexFonts() -> Bool {
+    let fonts = URL(fileURLWithPath: "build/DerivedData/Build/Products/Debug/Sahifa.app")
+        .appendingPathComponent("Contents/Resources/fonts", isDirectory: true)
+    guard let contents = try? FileManager.default.contentsOfDirectory(at: fonts,
+                                                                     includingPropertiesForKeys: nil)
+    else { return false }
+    for url in contents where url.pathExtension.lowercased() == "otf" {
+        CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
+    }
+    return NSFont(name: "IBMPlexSansArabic-Regular", size: 12) != nil
+}
+
 @MainActor
 func run() {
     // MARK: Inline delimiters
@@ -127,6 +143,91 @@ func run() {
         check("table inserted", inserted.contains("|"), inserted)
         e.undoManager?.undo()
         check("one undo removes an inserted table", e.string == "x", e.string)
+    }
+
+    // MARK: Script-aware emphasis
+    //
+    // Arabic has no italic face, so emphasis that mapped to Arabic-Regular
+    // rendered identically to body text. Emphasis must land on a *different*
+    // face from its surroundings in both scripts.
+
+    check("Plex faces registered for the font checks", registerPlexFonts())
+
+    do {
+        let body = FontLibrary.prose(size: 16)
+        let latinEm = FontLibrary.prose(size: 16, italic: true)
+        check("Latin emphasis is a true italic",
+              latinEm.fontName.contains("Italic"), latinEm.fontName)
+        check("…and differs from body text", latinEm.fontName != body.fontName)
+
+        // The Arabic face is reached through the cascade, so compare the
+        // cascade entry rather than the primary (Latin) font name.
+        func arabicFace(_ font: NSFont) -> String {
+            let cascade = font.fontDescriptor.object(forKey: .cascadeList) as? [NSFontDescriptor]
+            return cascade?.first?.object(forKey: .name) as? String ?? "<none>"
+        }
+        let arabicBody = arabicFace(body)
+        let arabicEm = arabicFace(latinEm)
+        check("Arabic body is the Regular face",
+              arabicBody == "IBMPlexSansArabic-Regular", arabicBody)
+        check("an italic Arabic run resolves to a different face than body text",
+              arabicEm != arabicBody, "\(arabicBody) -> \(arabicEm)")
+        check("…specifically one weight up",
+              arabicEm == "IBMPlexSansArabic-Medium", arabicEm)
+
+        // Bold is already the top Arabic weight: emphasis inside bold has
+        // nowhere to go, and must not fall back to a lighter face.
+        let arabicBoldEm = arabicFace(FontLibrary.prose(size: 16, weight: .bold, italic: true))
+        check("bold Arabic emphasis stays bold",
+              arabicBoldEm == "IBMPlexSansArabic-Bold", arabicBoldEm)
+
+        // Regression: medium/semibold used to drop the italic argument.
+        let mediumEm = FontLibrary.prose(size: 16, weight: .medium, italic: true)
+        let semiboldEm = FontLibrary.prose(size: 16, weight: .semibold, italic: true)
+        check("medium honours italic", mediumEm.fontName.contains("Italic"), mediumEm.fontName)
+        check("semibold honours italic", semiboldEm.fontName.contains("Italic"), semiboldEm.fontName)
+        check("medium Arabic emphasis steps up",
+              arabicFace(mediumEm) == "IBMPlexSansArabic-SemiBold", arabicFace(mediumEm))
+    }
+
+    // MARK: Restyle must stay a fixed point
+    //
+    // A second pass over already-styled text has to make zero attribute edits,
+    // or every keystroke re-lays-out the document and the view flickers.
+
+    do {
+        let mixed = """
+        # عنوان مختلط Heading
+
+        نص عربي فيه *مائل* وكلمة English with *emphasis* here.
+
+        فقرة ثانية بالعربية مع **غامق** و `code`.
+
+        A Latin paragraph with a [link](https://example.com) and _stress_.
+        """
+        let styler = MarkdownStyler()
+        styler.theme = EditorTheme(fontSize: 16, lineHeightMultiple: 1.4)
+        let storage = NSTextStorage(string: mixed)
+        styler.restyle(storage)
+        let firstPass = NSAttributedString(attributedString: storage)
+        styler.restyle(storage)
+        check("restyle is a fixed point on mixed EN/AR text",
+              firstPass.isEqual(to: storage))
+
+        // The Arabic emphasis really lands in the storage, not just in the
+        // font library: find *مائل* and check its font differs from the
+        // paragraph around it.
+        let ns = mixed as NSString
+        let emRange = ns.range(of: "مائل")
+        check("found the Arabic emphasis run", emRange.location != NSNotFound)
+        if emRange.location != NSNotFound {
+            let emFont = storage.attribute(.font, at: emRange.location, effectiveRange: nil) as? NSFont
+            let bodyRange = ns.range(of: "نص عربي")
+            let bodyFont = storage.attribute(.font, at: bodyRange.location, effectiveRange: nil) as? NSFont
+            check("styled Arabic emphasis differs from the surrounding text",
+                  emFont?.fontName != bodyFont?.fontName,
+                  "\(bodyFont?.fontName ?? "?") -> \(emFont?.fontName ?? "?")")
+        }
     }
 }
 

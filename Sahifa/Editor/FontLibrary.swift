@@ -28,19 +28,31 @@ enum FontLibrary {
     }
 
     /// Prose font: Plex Sans with Plex Sans Arabic as first cascade fallback.
+    ///
+    /// Emphasis is script-aware. The Arabic script has no italic tradition and
+    /// Plex Sans Arabic ships no italic face, so mapping emphasis to
+    /// Arabic-Regular — as this did — rendered *مائل* identically to body text,
+    /// silently dropping the emphasis. Latin keeps a true italic; Arabic steps
+    /// up one weight instead, which is how Arabic typography marks emphasis.
+    /// Slanting the upright face artificially is not an option: it wrecks the
+    /// joins.
+    ///
+    /// Bold is already the top Arabic weight, so bold emphasis has nowhere
+    /// further to go and simply stays bold. Plex Sans bundles no Medium- or
+    /// SemiBold-Italic, so those Latin weights borrow the nearest italic face.
     static func prose(size: CGFloat, weight: ProseWeight = .regular, italic: Bool = false) -> NSFont {
         let latin: String
         let arabic: String
         switch weight {
         case .regular:
             latin = italic ? "IBMPlexSans-Italic" : "IBMPlexSans"
-            arabic = "IBMPlexSansArabic-Regular"
+            arabic = italic ? "IBMPlexSansArabic-Medium" : "IBMPlexSansArabic-Regular"
         case .medium:
-            latin = "IBMPlexSans-Medm"
-            arabic = "IBMPlexSansArabic-Medium"
+            latin = italic ? "IBMPlexSans-Italic" : "IBMPlexSans-Medm"
+            arabic = italic ? "IBMPlexSansArabic-SemiBold" : "IBMPlexSansArabic-Medium"
         case .semibold:
-            latin = "IBMPlexSans-SmBld"
-            arabic = "IBMPlexSansArabic-SemiBold"
+            latin = italic ? "IBMPlexSans-BoldItalic" : "IBMPlexSans-SmBld"
+            arabic = italic ? "IBMPlexSansArabic-Bold" : "IBMPlexSansArabic-SemiBold"
         case .bold:
             latin = italic ? "IBMPlexSans-BoldItalic" : "IBMPlexSans-Bold"
             arabic = "IBMPlexSansArabic-Bold"
