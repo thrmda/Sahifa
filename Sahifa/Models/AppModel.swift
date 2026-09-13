@@ -740,7 +740,6 @@ final class AppModel: ObservableObject {
                 source.status = FileManager.default.fileExists(atPath: url.path)
                     ? .ready : .missing
                 sources.append(source)
-                startMonitor(for: source)
             }
         } else {
             migrateLegacyWorkspace()
@@ -758,8 +757,30 @@ final class AppModel: ObservableObject {
             looseFiles.append(url)
         }
         if !looseFiles.isEmpty { ensureLooseFilesSource() }
-        for source in sources {
-            loadChildren(of: DocumentID(sourceID: source.id, path: ""))
+        startWatchingAndReadSourcesSoon()
+    }
+
+    /// The rest of restoring a source — an FSEvents watcher per local root and
+    /// the first read of each tree — deferred to the next turn of the main
+    /// loop so the window is on screen before any of it runs.
+    ///
+    /// It is all blocking work on the main thread: FSEventStreamCreate opens
+    /// every ancestor directory of the root, and reading a GitHub source's
+    /// tree reaches the Keychain for the token. Done from `init`, a slow
+    /// volume or a Keychain prompt meant the app came up with NO WINDOW AT
+    /// ALL — alive, showing nothing, with no way to tell what it was waiting
+    /// on (observed twice). Deferring doesn't make the calls fast, but it
+    /// puts a window in front of them, so the worst case is a populated
+    /// sidebar arriving late rather than an app that appears not to launch.
+    private func startWatchingAndReadSourcesSoon() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            for source in self.sources where source.kind == .localFolder {
+                self.startMonitor(for: source)
+            }
+            for source in self.sources {
+                self.loadChildren(of: DocumentID(sourceID: source.id, path: ""))
+            }
         }
     }
 
