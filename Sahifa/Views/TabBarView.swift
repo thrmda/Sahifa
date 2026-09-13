@@ -121,9 +121,9 @@ private struct TabButton: View {
     private static let detachThreshold: CGFloat = 44
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Space.xs - 2) {
             title
-                .font(.custom("IBMPlexSans", size: 12))
+                .font(Type.label)
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .foregroundStyle(isActive ? Color.ink : Color.slate)
@@ -141,8 +141,8 @@ private struct TabButton: View {
             .accessibilityLabel(Text("Close Tab"))
             .pointerCursor(.pointingHand)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, Space.s)
+        .padding(.vertical, Space.xs)
         .frame(maxWidth: 200, alignment: .leading)
         .background(isActive ? Color.paper : Color.sand)
         .overlay(alignment: .bottom) {

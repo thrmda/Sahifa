@@ -169,8 +169,10 @@ enum MarkdownHTMLRenderer {
        this below; a PDF gets the full page width. */
     main { max-width: 40rem; margin: 0 auto; padding: 2.2rem 3rem; }
     h1, h2, h3, h4, h5, h6 { line-height: 1.25; margin: 1.4em 0 0.5em; }
-    h1 { font-size: 1.9rem; } h2 { font-size: 1.55rem; } h3 { font-size: 1.28rem; }
-    h4 { font-size: 1.1rem; }
+    /* Same 1.15-ratio ramp as the editor (Theme.Type.headingScale); the two
+       used to disagree, so headings changed size between panes. */
+    h1 { font-size: 1.75rem; } h2 { font-size: 1.52rem; } h3 { font-size: 1.32rem; }
+    h4 { font-size: 1.15rem; }
     p, ul, ol { margin: 0.65em 0; }
     li { margin: 0.25em 0; }
     /* Arabic needs a little more room for stacked diacritics and the

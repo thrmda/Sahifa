@@ -236,14 +236,9 @@ private struct StyleWalker: MarkupWalker {
 
     mutating func visitHeading(_ heading: Heading) {
         if let r = range(of: heading) {
-            let scale: CGFloat
-            switch heading.level {
-            case 1: scale = 1.7
-            case 2: scale = 1.45
-            case 3: scale = 1.25
-            case 4: scale = 1.1
-            default: scale = 1.0
-            }
+            // Shared with the export CSS (Theme.Type.headingScale) so a
+            // heading is the same size in the editor, preview and PDF.
+            let scale = Type.headingScale(level: heading.level)
             setProseFont(in: r, size: round(theme.fontSize * scale),
                          weight: heading.level <= 2 ? .bold : .semibold)
             styleHeadingMarkers(in: r)

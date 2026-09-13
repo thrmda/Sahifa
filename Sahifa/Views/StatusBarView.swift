@@ -23,7 +23,7 @@ struct StatusBarView: View {
     @State private var counts: TextCounts?
 
     var body: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: Space.m) {
             Button {
                 withAnimation { windowState.sidebarVisible.toggle() }
             } label: {
@@ -68,16 +68,16 @@ struct StatusBarView: View {
             // Three-way view control: editor only, both panes, preview only.
             // Grouped tighter than the surrounding items so it reads as one
             // segmented control, with the active segment tinted.
-            HStack(spacing: 6) {
+            HStack(spacing: Space.xs - 2) {
                 viewModeButton(.editOnly, "square.lefthalf.filled", Text("Edit Only"))
                 viewModeButton(.split, "rectangle.split.2x1", Text("Dual View"))
                 viewModeButton(.previewOnly, "eye", Text("View Only"))
             }
         }
-        .font(.custom("IBMPlexSans", size: 11))
+        .font(Type.caption)
         .foregroundStyle(Color.slate)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 5)
+        .padding(.horizontal, Space.s)
+        .padding(.vertical, Space.xxs + 1)
         .background(Color.sand)
         // Restarts on every edit, so the sleep coalesces a burst of typing
         // into one count. The first count for a document skips the wait.
