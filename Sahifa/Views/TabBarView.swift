@@ -53,16 +53,18 @@ struct TabBarView: View {
                     .accessibilityLabel(Text("New Tab"))
                     .pointerCursor(.pointingHand)
                 }
-                // A Spacer here would do nothing: inside a ScrollView the
-                // content is offered an unbounded width, so the HStack is only
-                // as wide as the tabs and the ScrollView is free to place it —
-                // which it does by CENTRING once the pane is wider than the
-                // strip, leaving the tabs floating mid-pane in full screen.
-                // Pinning the content to the leading edge (the side the sidebar
-                // is on, in either chrome direction) keeps them against it at
-                // every width, while still scrolling when they overflow.
-                .frame(maxWidth: .infinity, alignment: .leading)
+                // Measured before the frame below widens it, so this stays the
+                // tabs' own width and `overflows` means what it says.
                 .measureWidth { contentWidth = $0 }
+                // Inside a horizontal ScrollView the content is proposed an
+                // UNBOUNDED width, so neither a trailing Spacer nor
+                // maxWidth: .infinity does anything at all — the HStack stays
+                // tab-width and the ScrollView centres it, leaving the tabs
+                // floating mid-pane. Only a concrete minimum makes the content
+                // fill the viewport, and then .leading pins the tabs to the
+                // side the sidebar is on, in either chrome direction. Wider
+                // content still overflows and scrolls as before.
+                .frame(minWidth: viewportWidth, alignment: .leading)
             }
             .defaultScrollAnchor(.leading)
             .measureWidth { viewportWidth = $0 }
