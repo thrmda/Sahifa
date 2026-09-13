@@ -154,15 +154,21 @@ struct SahifaCommands: Commands {
         CommandGroup(replacing: .saveItem) {
             // Browser-style: ⌘W closes the active tab, and closing the last tab
             // closes the window rather than leaving an empty one behind.
+            // Never disabled: replacing .saveItem also removed the system Close
+            // item, so a window with no tabs to close — Settings, most of all —
+            // would be left with a dead ⌘W. Anything without a focused
+            // WindowState closes the window instead.
             Button("Close Tab") {
-                guard let windowState, let active = windowState.selection else { return }
+                guard let windowState, let active = windowState.selection else {
+                    NSApp.keyWindow?.performClose(nil)
+                    return
+                }
                 windowState.closeTab(active)
                 if windowState.openTabs.isEmpty {
                     NSApp.keyWindow?.performClose(nil)
                 }
             }
             .keyboardShortcut("w", modifiers: .command)
-            .disabled(windowState == nil)
             Button("Close Window") { NSApp.keyWindow?.performClose(nil) }
                 .keyboardShortcut("w", modifiers: [.command, .shift])
             Button("Close All") {
