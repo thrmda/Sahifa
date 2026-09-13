@@ -125,7 +125,7 @@ private struct TabButton: View {
     var body: some View {
         HStack(spacing: Space.xs - 2) {
             title
-                .font(Type.label)
+                .font(Typography.label)
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .foregroundStyle(isActive ? Color.ink : Color.slate)

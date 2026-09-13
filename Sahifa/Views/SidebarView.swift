@@ -188,7 +188,7 @@ private struct SourceDisclosure: View {
                 // the loose "Opened Files".
                 sourceIcon
                 Text(verbatim: chromeLabel(source.name, layoutDirection))
-                    .font(Type.sectionHeader)
+                    .font(Typography.sectionHeader)
                     .foregroundStyle(Color.slate)
                     .lineLimit(1)
                 Spacer(minLength: 0)
@@ -317,7 +317,7 @@ private struct NodeRows: View {
             }
             if nodes.isEmpty {
                 Text("Empty")
-                    .font(Type.label)
+                    .font(Typography.label)
                     .foregroundStyle(Color.slate)
                     .selectionDisabled()
                     .listRowBackground(rowBackground(bottom: isTail))
@@ -332,12 +332,12 @@ private struct NodeRows: View {
                 Button("Try Again") { model.loadChildren(of: parent, force: true) }
                     .buttonStyle(.link)
             }
-            .font(Type.caption)
+            .font(Typography.caption)
             .selectionDisabled()
             .listRowBackground(rowBackground(bottom: isTail))
         } else {
             Text("Loading…")
-                .font(Type.label)
+                .font(Typography.label)
                 .foregroundStyle(Color.slate)
                 .selectionDisabled()
                 .listRowBackground(rowBackground(bottom: isTail))
@@ -373,7 +373,7 @@ private struct NodeLabel: View {
                 // is heavier than the action deserves.
                 TextField("", text: $windowState.renameText)
                     .textFieldStyle(.plain)
-                    .font(Type.body)
+                    .font(Typography.body)
                     .focused($renameFieldFocused)
                     .onSubmit { commitRename() }
                     .onExitCommand { windowState.renaming = nil }
@@ -384,7 +384,7 @@ private struct NodeLabel: View {
                     .task { renameFieldFocused = true }
             } else {
                 Text(verbatim: chromeLabel(node.name, layoutDirection))
-                    .font(Type.body)
+                    .font(Typography.body)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }

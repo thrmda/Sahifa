@@ -74,7 +74,7 @@ struct StatusBarView: View {
                 viewModeButton(.previewOnly, "eye", Text("View Only"))
             }
         }
-        .font(Type.caption)
+        .font(Typography.caption)
         .foregroundStyle(Color.slate)
         .padding(.horizontal, Space.s)
         .padding(.vertical, Space.xxs + 1)

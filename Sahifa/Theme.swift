@@ -42,7 +42,11 @@ enum Radius {
 /// Chrome type. Body text lives in the editor and is set by FontLibrary from
 /// the user's font-size setting; these are the fixed sizes the UI around it
 /// uses.
-enum Type {
+///
+/// Named Typography rather than Type: the latter is legal but reads as the
+/// language's own `.Type`, and a bare `TextStyle` would sit awkwardly beside
+/// SwiftUI's `Font.TextStyle`.
+enum Typography {
     /// Status bar, sidebar counts and captions.
     static let caption = Font.custom("IBMPlexSans", size: 11)
     /// Tab labels, sidebar rows.
