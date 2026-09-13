@@ -22,22 +22,39 @@ on disk.
 - **Live side-by-side preview.** A rendered HTML pane updates as you type and
   keeps its scroll position; editor and preview scroll in sync. Every block
   carries its own resolved direction so the preview mirrors the editor's
-  per-paragraph bidi exactly.
+  per-paragraph bidi exactly. Three view modes — editor only, both, preview
+  only — from the status bar, the View menu, or ⇧⌘P to cycle.
 - **Export to HTML & PDF.** Self-contained HTML with IBM Plex embedded as
   `data:` URIs (no missing fonts on other machines), and paginated A4 PDF with
   a light “paper” palette. Arabic text in the PDF copies out as clean logical
   Unicode, not garbled presentation forms.
-- **Formatting without leaving the keyboard.** Full **Format** menu with
-  shortcuts (⌘B, ⌘I, ⌘1–4, lists, quote, code, link, image, rule, table) plus
-  an optional icon toolbar over the editor for the no-shortcut path.
+- **Formatting without leaving the keyboard.** A full **Format** menu — bold,
+  italic, strikethrough, headings, lists, quote, inline code, code block,
+  link, image, rule and table — with shortcuts for the common ones (⌘B, ⌘I,
+  ⌘1–4, ⇧⌘7/⇧⌘8, ⌘E, ⌘K), plus an optional icon toolbar over the editor for
+  the no-shortcut path.
 - **Focus mode** dims everything but the paragraph you're writing (⇧⌘F).
-- **Multiple windows and native tabs**, each with its own selection, preview,
-  and sidebar state; two views of the same file share one document.
+- **Document tabs inside the window.** ⌘T opens a blank tab; clicking a file
+  in the sidebar reuses the current one, so browsing doesn't pile tabs up.
+  Right-click ▸ *Open in New Tab* when you do want another, ⌘W closes the tab
+  and ⇧⌘W the window, and dragging a tab down out of the strip detaches it
+  into its own window. Windows each keep their own selection, preview and
+  sidebar state; two views of the same file share one document.
 - **Resizable panes.** Drag to resize the sidebar and the editor/preview split;
   positions persist across launches and mirror correctly in RTL.
 - **IBM Plex everywhere** (bundled, SIL OFL): Plex Sans for Latin, Plex Sans
   Arabic for Arabic — matched as one superfamily per script run — and Plex
   Mono for code.
+- **A reading measure.** Lines stop at about 65 characters and the column
+  centres itself in a wide window, instead of running the full width of the
+  display. The preview wraps at the same measure.
+- **Arabic emphasis you can see.** Plex Sans Arabic has no italic face, and
+  slanting an upright Arabic face breaks its joins — so `*مائل*` is set one
+  weight heavier rather than sloped. Latin emphasis stays a true italic, in
+  the editor, the preview and the PDF alike.
+- **Readable link colour.** Link text clears WCAG AA against both the paper
+  and the sand backgrounds, in light and dark; warnings and errors have their
+  own colour rather than borrowing the link's.
 - **GitHub repositories.** Add a repository from the File menu and browse its
   Markdown alongside your local folders — files are fetched as you open them,
   edits save back, and you can create, rename and delete files in it too.
@@ -51,8 +68,9 @@ on disk.
   each stays in the sidebar and expands into its subfolders, loading them as
   you open them, and updating live when anything changes on disk. Files opened on their own sit under *Opened Files* instead of
   replacing what you were looking at.
-- **Plain `.md` files** in a folder you choose. No library format, no
-  database, no accounts, no telemetry, no network calls.
+- **Plain Markdown files** in a folder you choose — `.md`, `.markdown`,
+  `.mdown`, `.mkd`, `.mkdn` and `.mdx`. No library format, no database, no
+  telemetry; the only network use is the GitHub repositories you add yourself.
 
 ## Requirements
 
@@ -83,6 +101,8 @@ app bundle — the model layer compiles on its own:
 scripts/test-document-conflicts.sh   # files changed on disk while open
 scripts/test-tree-operations.sh      # source/tree ids, rename, move to trash
 scripts/test-formatting.sh           # formatting actions, selection, undo
+scripts/test-tabs.sh                 # document tabs: open, reuse, close, detach
+scripts/test-view-mode.sh            # the three view modes and their migration
 scripts/test-github-store.sh         # reading a GitHub repository (no login)
 scripts/test-accounts.sh             # Keychain storage, refused credentials
 scripts/test-github-write.sh         # saving back (opt-in, see the script)
@@ -104,12 +124,18 @@ English/Arabic document and an Arabic-named file.
 | --- | --- |
 | Open File… | ⌘O |
 | Add Folder… (adds a sidebar source) | ⇧⌘O |
+| Add GitHub Repository… | File menu |
 | Open Recent (folders and files) | File menu |
 | Rename / Move to Trash | right-click in sidebar |
 | New file | ⌘N |
 | New window | ⇧⌘N |
 | New tab | ⌘T |
+| Close tab | ⌘W |
+| Close window | ⇧⌘W |
+| Close all windows | ⌥⌘W |
 | Save (also autosaves after 1 s) | ⌘S |
+| Export as HTML… | ⇧⌘E |
+| Export as PDF… | File menu |
 | Find / find & replace | ⌘F / ⌥⌘F |
 | Settings (UI language, font size, line spacing) | ⌘, |
 
@@ -118,11 +144,10 @@ English/Arabic document and an Arabic-named file.
 | Action | Shortcut |
 | --- | --- |
 | Show / hide sidebar | ⌃⌘S |
-| Show / hide preview | ⇧⌘P |
+| Edit Only / Dual View / View Only | View menu, or the status bar |
+| Cycle those three | ⇧⌘P |
 | Focus mode | ⇧⌘F |
 | Show / hide format bar | View menu |
-| Export as HTML… | ⇧⌘E |
-| Export as PDF… | File menu |
 
 ### Format
 
