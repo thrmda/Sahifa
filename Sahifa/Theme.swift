@@ -11,6 +11,12 @@ enum Brand {
     static var sand: NSColor { NSColor(named: "Sand") ?? NSColor(srgbRed: 0.922, green: 0.894, blue: 0.831, alpha: 1) }
     static var ink: NSColor { NSColor(named: "Ink") ?? NSColor(srgbRed: 0.094, green: 0.149, blue: 0.259, alpha: 1) }
     static var slate: NSColor { NSColor(named: "Slate") ?? NSColor(srgbRed: 0.357, green: 0.384, blue: 0.439, alpha: 1) }
+    /// Accents and affordances. In light mode Sage is 5.01:1 on Paper but only
+    /// 4.27:1 on Sand — under AA for text. Audited: on Sand it only ever
+    /// colours icons and the active-tab underline, where the 3:1 non-text
+    /// threshold applies; as text it appears solely on Paper, on blockquote
+    /// and list markers in the editor. Keep it that way — running text on Sand
+    /// wants Slate or Ink.
     static var sage: NSColor { NSColor(named: "Sage") ?? NSColor(srgbRed: 0.306, green: 0.443, blue: 0.408, alpha: 1) }
     /// Links, and only links. Gold used to carry warnings too, which made a
     /// dead link and a failed save look like the same thing.
