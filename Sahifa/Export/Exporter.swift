@@ -120,20 +120,32 @@ private final class PDFCapture: NSObject, WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        // Setting the view's appearance doesn't reliably override
-        // prefers-color-scheme, so force the light "paper" palette by injecting
-        // an !important override of the CSS custom properties (custom-property
+        // createPDF renders SCREEN media, so the stylesheet's @media print
+        // block never applies here — its rules have to be injected by hand.
+        //
+        // Colours: setting the view's appearance doesn't reliably override
+        // prefers-color-scheme, so force the light "paper" palette through an
+        // !important override of the custom properties (custom-property
         // declarations honour !important and beat the dark @media block).
-        let forceLight = """
+        //
+        // Layout: the page is already paginated to the paper width, so the
+        // on-screen reading measure would only waste the margins — and a code
+        // line wider than that measure would be clipped outright, since a PDF
+        // has no horizontal scrolling to reveal it. The padding stays: unlike
+        // a printer, this pipeline adds no page margin of its own, so dropping
+        // it would run the text into the edge of the sheet.
+        let printOverrides = """
         (function(){
           var s = document.createElement('style');
           s.textContent = ':root{--paper:#FAF6EC!important;--sand:#EBE4D4!important;\
         --ink:#182642!important;--slate:#5B6270!important;--sage:#4E7168!important;\
-        --gold:#7D6231!important;}';
+        --gold:#7D6231!important;--warning:#A33A2A!important;}\
+        main{max-width:none!important;margin:0!important;}\
+        pre{white-space:pre-wrap!important;word-wrap:break-word!important;overflow-x:visible!important;}';
           document.head.appendChild(s);
         })();
         """
-        webView.evaluateJavaScript(forceLight) { [self] _, _ in
+        webView.evaluateJavaScript(printOverrides) { [self] _, _ in
             // Give layout/fonts a beat to settle before measuring.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [self] in measure() }
         }
