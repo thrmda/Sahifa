@@ -15,7 +15,12 @@ import Foundation
 // it never touches anything else in the repository.
 
 var failures = 0
+// Counted so a run that skipped everything can't report itself as a pass:
+// with no credentials this suite does nothing, and "ALL PASS" there reads as
+// coverage that never happened.
+var checksRun = 0
 func check(_ label: String, _ condition: Bool, _ detail: String = "") {
+    checksRun += 1
     print("\(condition ? "PASS" : "FAIL")  \(label)\(detail.isEmpty ? "" : "  — \(detail)")")
     if !condition { failures += 1 }
 }
@@ -135,5 +140,11 @@ func main() async {
 }
 
 await main()
-print(failures == 0 ? "\nALL PASS" : "\n\(failures) FAILURE(S)")
+if failures > 0 {
+    print("\n\(failures) FAILURE(S)")
+} else if checksRun == 0 {
+    print("\nNOTHING RAN — set SAHIFA_TEST_REPO and SAHIFA_TEST_TOKEN to exercise the write path")
+} else {
+    print("\nALL PASS (\(checksRun) checks)")
+}
 exit(failures == 0 ? 0 : 1)
