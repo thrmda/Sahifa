@@ -143,13 +143,13 @@ enum MarkdownHTMLRenderer {
     /// Brand palette (Assets.xcassets values), light + dark.
     private static let css = """
     :root {
-      --paper: #FAF6EC; --sand: #EBE4D4; --ink: #182642;
+      --paper: #FAF6EC; --panel: #EBE4D4; --ink: #182642;
       --slate: #5B6270; --sage: #4E7168; --gold: #7D6231;
       --warning: #A33A2A;
     }
     @media (prefers-color-scheme: dark) {
       :root {
-        --paper: #131D31; --sand: #20304F; --ink: #F4EFE4;
+        --paper: #131D31; --panel: #20304F; --ink: #F4EFE4;
         --slate: #99A3B5; --sage: #7BA99C; --gold: #C9A45E;
         --warning: #E2907A;
       }
@@ -192,7 +192,7 @@ enum MarkdownHTMLRenderer {
     em.rtl { font-style: normal; font-weight: 500; }
     strong em.rtl, em.rtl strong { font-weight: 700; }
     pre {
-      background: var(--sand); border-radius: 8px; padding: 0.85em 1em;
+      background: var(--panel); border-radius: 8px; padding: 0.85em 1em;
       overflow-x: auto; text-align: left;
     }
     code {
@@ -200,7 +200,7 @@ enum MarkdownHTMLRenderer {
       font-size: 0.92em;
     }
     :not(pre) > code {
-      background: var(--sand); border-radius: 4px; padding: 0.08em 0.35em;
+      background: var(--panel); border-radius: 4px; padding: 0.08em 0.35em;
     }
     blockquote {
       margin: 0.8em 0; padding-inline-start: 1em; margin-inline-start: 0;
@@ -209,8 +209,8 @@ enum MarkdownHTMLRenderer {
     hr { border: none; border-top: 1px solid var(--slate); opacity: 0.45; margin: 1.6em 0; }
     img { max-width: 100%; }
     table { border-collapse: collapse; margin: 0.8em 0; }
-    th, td { border: 1px solid var(--sand); padding: 0.35em 0.7em; }
-    th { background: var(--sand); }
+    th, td { border: 1px solid var(--panel); padding: 0.35em 0.7em; }
+    th { background: var(--panel); }
     del { color: var(--slate); }
     /* Print / PDF: paper is always light (a dark fill wastes ink and reads
        wrong), content uses the full page width, and blocks avoid ugly page
@@ -218,7 +218,7 @@ enum MarkdownHTMLRenderer {
        dark-mode machine prints. */
     @media print {
       :root {
-        --paper: #FAF6EC; --sand: #EBE4D4; --ink: #182642;
+        --paper: #FAF6EC; --panel: #EBE4D4; --ink: #182642;
         --slate: #5B6270; --sage: #4E7168; --gold: #7D6231;
         --warning: #A33A2A;
       }

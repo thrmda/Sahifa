@@ -57,7 +57,7 @@ struct FormatBarView: View {
         .foregroundStyle(Color.slate)
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Color.sand)
+        .background(Color.panel)
     }
 
     private var barDivider: some View {

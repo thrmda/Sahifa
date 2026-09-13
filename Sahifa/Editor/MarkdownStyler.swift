@@ -266,7 +266,7 @@ private struct StyleWalker: MarkupWalker {
         guard let r = range(of: codeBlock) else { return }
         storage.addAttributes([
             .font: FontLibrary.mono(size: theme.fontSize * 0.92),
-            .backgroundColor: Brand.sand.withAlphaComponent(0.6),
+            .backgroundColor: Brand.panel.withAlphaComponent(0.6),
         ], range: r)
         forceLTRParagraphs(in: r)
         // Fence lines (``` or ~~~) in Slate.
@@ -341,7 +341,7 @@ private struct StyleWalker: MarkupWalker {
         guard let r = range(of: inlineCode) else { return }
         storage.addAttributes([
             .font: FontLibrary.mono(size: theme.fontSize * 0.92),
-            .backgroundColor: Brand.sand.withAlphaComponent(0.6),
+            .backgroundColor: Brand.panel.withAlphaComponent(0.6),
         ], range: r)
         // Backtick delimiters in Slate.
         let text = ns.substring(with: r)

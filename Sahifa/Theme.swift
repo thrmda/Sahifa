@@ -3,20 +3,32 @@ import AppKit
 
 /// Brand color tokens. Each is a named color in Assets.xcassets with
 /// Light + Dark variants, so AppKit/SwiftUI resolve appearance automatically.
+///
+/// Naming rule, since these invert between modes: a token is named for the
+/// ROLE it plays, or for a hue only when that hue survives the inversion.
+/// `paper` and `ink` are role metaphors — the surface you write on and the
+/// marks you make — and stay true whatever colour they resolve to. `sage`,
+/// `gold` and `slate` really are those hues in both modes. `sand` was the odd
+/// one out: a pure colour name that rendered navy at night, describing only
+/// half the app, so it is now `panel`, after the job it does.
 enum Brand {
     // Literal fallbacks (light values) keep previews and non-bundle contexts
     // alive if the catalog can't be found; in the app the named lookup wins
     // and adapts to dark mode.
     static var paper: NSColor { NSColor(named: "Paper") ?? NSColor(srgbRed: 0.980, green: 0.965, blue: 0.925, alpha: 1) }
-    static var sand: NSColor { NSColor(named: "Sand") ?? NSColor(srgbRed: 0.922, green: 0.894, blue: 0.831, alpha: 1) }
+    /// The fill that sets chrome and code apart from the page: sidebar,
+    /// status bar, tab strip, code blocks, table headers. Named for that role
+    /// rather than for a colour — it is sand in light mode but navy in dark,
+    /// so the old name `Sand` described only half the app.
+    static var panel: NSColor { NSColor(named: "Panel") ?? NSColor(srgbRed: 0.922, green: 0.894, blue: 0.831, alpha: 1) }
     static var ink: NSColor { NSColor(named: "Ink") ?? NSColor(srgbRed: 0.094, green: 0.149, blue: 0.259, alpha: 1) }
     static var slate: NSColor { NSColor(named: "Slate") ?? NSColor(srgbRed: 0.357, green: 0.384, blue: 0.439, alpha: 1) }
     /// Accents and affordances. In light mode Sage is 5.01:1 on Paper but only
-    /// 4.27:1 on Sand — under AA for text. Audited: on Sand it only ever
+    /// 4.27:1 on Panel — under AA for text. Audited: on Panel it only ever
     /// colours icons and the active-tab underline, where the 3:1 non-text
     /// threshold applies; as text it appears solely on Paper, on blockquote
-    /// and list markers in the editor. Keep it that way — running text on Sand
-    /// wants Slate or Ink.
+    /// and list markers in the editor. Keep it that way — running text on
+    /// Panel wants Slate or Ink.
     static var sage: NSColor { NSColor(named: "Sage") ?? NSColor(srgbRed: 0.306, green: 0.443, blue: 0.408, alpha: 1) }
     /// Links, and only links. Gold used to carry warnings too, which made a
     /// dead link and a failed save look like the same thing.
@@ -79,7 +91,7 @@ enum Typography {
 
 extension Color {
     static let paper = Color("Paper")
-    static let sand = Color("Sand")
+    static let panel = Color("Panel")
     static let ink = Color("Ink")
     static let slate = Color("Slate")
     static let sage = Color("Sage")
@@ -87,8 +99,8 @@ extension Color {
     static let warning = Color("Warning")
 
     /// A faint panel fill that groups a source and its files in the sidebar —
-    /// a touch lighter than `sand` in the dark theme, a touch darker in light.
-    /// A tint (not a fixed colour) so it rides on whatever `sand` resolves to.
+    /// a touch lighter than `panel` in the dark theme, a touch darker in light.
+    /// A tint (not a fixed colour) so it rides on whatever `panel` resolves to.
     static let grouped = Color(nsColor: NSColor(name: nil) { appearance in
         let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         return dark ? NSColor(white: 1, alpha: 0.06) : NSColor(white: 0, alpha: 0.045)

@@ -68,7 +68,7 @@ struct TabBarView: View {
             }
             .defaultScrollAnchor(.leading)
             .measureWidth { viewportWidth = $0 }
-            .background(Color.sand)
+            .background(Color.panel)
             .onChange(of: windowState.selection) { _, id in
                 // Nothing to reveal when every tab already fits.
                 guard let id, overflows else { return }
@@ -146,7 +146,7 @@ private struct TabButton: View {
         .padding(.horizontal, Space.s)
         .padding(.vertical, Space.xs)
         .frame(maxWidth: 200, alignment: .leading)
-        .background(isActive ? Color.paper : Color.sand)
+        .background(isActive ? Color.paper : Color.panel)
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(Color.sage)

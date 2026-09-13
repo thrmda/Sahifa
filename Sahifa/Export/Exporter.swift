@@ -137,7 +137,7 @@ private final class PDFCapture: NSObject, WKNavigationDelegate {
         let printOverrides = """
         (function(){
           var s = document.createElement('style');
-          s.textContent = ':root{--paper:#FAF6EC!important;--sand:#EBE4D4!important;\
+          s.textContent = ':root{--paper:#FAF6EC!important;--panel:#EBE4D4!important;\
         --ink:#182642!important;--slate:#5B6270!important;--sage:#4E7168!important;\
         --gold:#7D6231!important;--warning:#A33A2A!important;}\
         main{max-width:none!important;margin:0!important;}\

@@ -402,7 +402,7 @@ private struct SaveFailedBanner: View {
         .foregroundStyle(Color.slate)
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
-        .background(Color.sand)
+        .background(Color.panel)
     }
 }
 
@@ -421,7 +421,7 @@ private struct ReadOnlyBanner: View {
         .foregroundStyle(Color.slate)
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Color.sand)
+        .background(Color.panel)
     }
 }
 
@@ -446,7 +446,7 @@ private struct ConflictBanner: View {
         .font(.custom("IBMPlexSans", size: 12))
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
-        .background(Color.sand)
+        .background(Color.panel)
     }
 }
 

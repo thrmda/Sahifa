@@ -78,7 +78,7 @@ struct StatusBarView: View {
         .foregroundStyle(Color.slate)
         .padding(.horizontal, Space.s)
         .padding(.vertical, Space.xxs + 1)
-        .background(Color.sand)
+        .background(Color.panel)
         // Restarts on every edit, so the sleep coalesces a burst of typing
         // into one count. The first count for a document skips the wait.
         .task(id: text) {

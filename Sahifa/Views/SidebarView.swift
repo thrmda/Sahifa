@@ -77,7 +77,7 @@ struct SidebarView: View {
             }
         }
         .scrollContentBackground(.hidden)
-        .background(Color.sand)
+        .background(Color.panel)
         // Footer duplicates the window-toolbar actions: under forced RTL
         // chrome (uiLanguage = "ar") NSToolbar pushes the items into its
         // overflow menu, so keep an always-visible home for them here.
@@ -118,7 +118,7 @@ struct SidebarView: View {
             .foregroundStyle(Color.slate)
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
-            .background(Color.sand)
+            .background(Color.panel)
         }
     }
 
