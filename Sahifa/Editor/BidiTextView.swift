@@ -25,9 +25,17 @@ final class BidiTextView: NSTextView {
     /// behaviour, and the floor for the centring inset.
     static let minimumSideInset: CGFloat = 28
 
+    /// The inset is recomputed here rather than in `layout()`: changing it is
+    /// itself a layout-affecting change, and doing that inside the layout pass
+    /// leaves TextKit 2's viewport subviews without their text — the document
+    /// lays out and the direction bars draw, but not a glyph is rendered.
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        updateTextInsets()
+    }
+
     override func layout() {
         super.layout()
-        updateTextInsets()
         if barsOverlay.superview !== self {
             barsOverlay.textView = self
             addSubview(barsOverlay)
