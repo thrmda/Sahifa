@@ -159,6 +159,52 @@ func run() async {
     w.closeTab(w.selection!)
     check("⌘W on a lone blank tab empties the strip", w.openTabs.isEmpty)
     check("…and clears the selection", w.selection == nil)
+
+    // MARK: The model contracts behind the two drag gestures
+    //
+    // Dropping a file on a window and dragging a tab out of the strip can't be
+    // driven from a test — a synthesised drag never starts a real NSDragging
+    // session — but the model calls those gestures make can be, and they are
+    // the part that would break silently.
+
+    do {
+        // A drop lands on whatever window it was aimed at, which may not be
+        // the front one. ContentView.onDrop passes `preferring:` for exactly
+        // this; if openExternal ignored it, a drop on a background window
+        // would open in the wrong place.
+        let front = WindowState(); front.attach(model)
+        front.selection = nil; front.openTabs = []
+        let target = WindowState(); target.attach(model)
+        target.selection = nil; target.openTabs = []
+        model.frontWindowState = front
+
+        model.openExternal([root.appendingPathComponent("c.md")], preferring: target)
+        check("a drop opens in the window it was aimed at",
+              target.openTabs.contains(id("c.md")), "\(target.openTabs)")
+        check("…and not in the front window",
+              front.openTabs.isEmpty, "\(front.openTabs)")
+    }
+
+    do {
+        // Dragging a tab out stages its id, closes it here, and opens a
+        // window; the new window's attach must pick the staged id up, or the
+        // detached tab arrives showing the wrong file.
+        let source = WindowState(); source.attach(model)
+        source.selection = nil; source.openTabs = []
+        source.showInCurrentTab(id("a.md"))
+        source.openInNewTab(id("b.md"))
+
+        model.stagePendingSelection(id("b.md"))
+        source.closeTab(id("b.md"))
+        check("detaching closes the tab in the window it left",
+              source.openTabs == [id("a.md")], "\(source.openTabs)")
+
+        let detached = WindowState()
+        detached.attach(model)
+        check("…and the new window opens on the detached file",
+              detached.selection == id("b.md"), "\(String(describing: detached.selection))")
+        check("…with a tab for it", detached.openTabs.contains(id("b.md")), "\(detached.openTabs)")
+    }
 }
 
 await run()
