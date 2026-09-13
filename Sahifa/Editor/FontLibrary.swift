@@ -2,8 +2,21 @@ import AppKit
 
 /// IBM Plex superfamily access. Latin prose runs use IBM Plex Sans; Arabic
 /// runs fall through to IBM Plex Sans Arabic via the font cascade list, so a
-/// single "font" transparently covers both scripts at matched x-height.
+/// single "font" transparently covers both scripts at matched metrics.
 /// Code uses IBM Plex Mono.
+///
+/// "Matched metrics" is measured, not assumed: at 100pt both faces report
+/// x-height 51.6 and cap height 69.8. They differ only in vertical body —
+/// Arabic ascent/descent 108.5/41.5 against Latin 102.5/27.5, so Arabic lines
+/// are about 15% taller, which is why the styler gives RTL paragraphs their
+/// own small line-height factor rather than scaling the glyphs.
+///
+/// A review suggested the Arabic sets optically smaller and wanted the
+/// cascade entry scaled up. An A/B render at 1.00 against 1.06 does not
+/// support that: at equal point size the Arabic reads at the same visual size
+/// as the Latin beside it, and 1.06 is barely distinguishable. No scale is
+/// applied — a mismatch here would also desynchronise the editor from the
+/// export CSS, which has no equivalent knob.
 enum FontLibrary {
 
     enum ProseWeight {
