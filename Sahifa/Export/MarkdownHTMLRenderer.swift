@@ -162,6 +162,11 @@ enum MarkdownHTMLRenderer {
     body {
       background: var(--paper); color: var(--ink);
       font-family: "IBM Plex Sans", "IBM Plex Sans Arabic", system-ui, sans-serif;
+      /* Fixed, and deliberately not the editor's 1.4 (EditorTheme
+         .lineHeightMultiple): CSS multiplies the font size where
+         NSParagraphStyle multiplies the font's own line height, so the two
+         literals measure different things. See the note there for why the
+         editor's setting isn't piped through to the preview. */
       line-height: 1.65; margin: 0;
     }
     /* 34rem of text between the gutters — the same measure the editor caps to,

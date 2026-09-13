@@ -10,6 +10,22 @@ extension NSAttributedString.Key {
 
 struct EditorTheme: Equatable {
     var fontSize: CGFloat = 16
+
+    /// User-adjustable via `editorLineSpacing` (1.0–2.0).
+    ///
+    /// This is NOT the same quantity as the stylesheet's `line-height: 1.65`,
+    /// and the two literals are not meant to match. NSParagraphStyle multiplies
+    /// the *font's own* line height, while CSS multiplies the font size — so
+    /// 1.4 here lands at 1.4 × 1.30 = 1.82em for Plex Sans against the
+    /// preview's 1.65em, about 9% looser. Under Arabic the gap widens: the
+    /// RTL factor below on Plex Sans Arabic's taller body gives 1.512 × 1.50 =
+    /// 2.27em against the preview's 1.78em.
+    ///
+    /// Feeding this setting straight to the preview as a CSS line-height would
+    /// therefore make the two disagree in a new way rather than align them; a
+    /// faithful mapping has to fold in each script's natural line height. Left
+    /// as is deliberately — the editor is the surface being typed in, and the
+    /// preview reads as a page.
     var lineHeightMultiple: CGFloat = 1.4
 
     /// Extra leading for Arabic paragraphs, on top of the user's multiplier.
