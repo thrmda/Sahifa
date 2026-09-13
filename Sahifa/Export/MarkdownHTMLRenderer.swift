@@ -171,6 +171,11 @@ enum MarkdownHTMLRenderer {
     h4 { font-size: 1.1rem; }
     p, ul, ol { margin: 0.65em 0; }
     li { margin: 0.25em 0; }
+    /* Arabic needs a little more room for stacked diacritics and the
+       descenders of ج ح خ. Only a little: Plex Sans Arabic already sets on a
+       taller body than Plex Sans, so matching the editor's small factor keeps
+       the two scripts reading at the same density. Code stays LTR. */
+    [dir="rtl"]:not(pre):not(code) { line-height: 1.78; }
     a { color: var(--gold); }
     /* Arabic has no italic tradition and Plex Sans Arabic ships no italic
        face, so a slant here would either do nothing or be faked. Emphasis

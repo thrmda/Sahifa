@@ -11,6 +11,20 @@ extension NSAttributedString.Key {
 struct EditorTheme: Equatable {
     var fontSize: CGFloat = 16
     var lineHeightMultiple: CGFloat = 1.4
+
+    /// Extra leading for Arabic paragraphs, on top of the user's multiplier.
+    ///
+    /// Deliberately small. Plex Sans Arabic already carries a taller
+    /// ascent/descent than Plex Sans (151 vs 131 per 100pt), so Arabic lines
+    /// come out ~15% taller before anything is added here; a big jump would
+    /// leave Arabic paragraphs visibly airier than the Latin ones beside them.
+    /// This is only the bit of room that stacked diacritics and the descenders
+    /// of ج ح خ need to clear the line below.
+    static let rtlLineHeightFactor: CGFloat = 1.08
+
+    func lineHeightMultiple(rtl: Bool) -> CGFloat {
+        rtl ? lineHeightMultiple * Self.rtlLineHeightFactor : lineHeightMultiple
+    }
 }
 
 /// Live in-place Markdown styling: the raw source stays visible and editable;
@@ -148,7 +162,7 @@ final class MarkdownStyler {
             let style = NSMutableParagraphStyle()
             style.baseWritingDirection = isRTL ? .rightToLeft : .leftToRight
             style.alignment = .natural
-            style.lineHeightMultiple = theme.lineHeightMultiple
+            style.lineHeightMultiple = theme.lineHeightMultiple(rtl: isRTL)
             style.paragraphSpacing = theme.fontSize * 0.4
 
             storage.addAttributes([
