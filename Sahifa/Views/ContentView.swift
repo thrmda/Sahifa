@@ -170,6 +170,11 @@ struct ContentView: View {
                     .tint(.sage)
                 Button("Open File…") { model.chooseFile() }
             }
+            // On macOS ContentUnavailableView takes its ideal size rather than
+            // filling, so without this the detail VStack centres the whole
+            // [tab strip + card] group: the strip sank to mid-pane and the
+            // paper background covered only the card.
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.paper)
         } else {
             ContentUnavailableView {
@@ -177,6 +182,7 @@ struct ContentView: View {
             } description: {
                 Text("Choose a Markdown file from the sidebar, or open one in this tab.")
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.paper)
         }
     }
