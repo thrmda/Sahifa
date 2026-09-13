@@ -80,7 +80,7 @@ private struct GitHubConnectSheet: View {
         URL(string: "https://github.com/settings/personal-access-tokens/new")!
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: Space.l) {
             Text("Connect GitHub")
                 .font(.headline)
             Text("Create a fine-grained token limited to the repositories you want Sahifa to reach, with Contents set to Read and write. Give it a short expiry — you can always make another.")
@@ -95,7 +95,7 @@ private struct GitHubConnectSheet: View {
                     .foregroundStyle(Color.warning)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            HStack(spacing: 10) {
+            HStack(spacing: Space.s) {
                 Text("The token is kept in your Mac's Keychain.")
                     .font(.footnote)
                     .foregroundStyle(Color.slate)
@@ -123,7 +123,7 @@ private struct GitHubConnectSheet: View {
                           || token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
-        .padding(20)
+        .padding(Space.xl)
         .frame(width: 460)
     }
 }

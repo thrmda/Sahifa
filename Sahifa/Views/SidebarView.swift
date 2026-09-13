@@ -59,21 +59,21 @@ struct SidebarView: View {
                         SourceDisclosure(source: source, draggingSource: $draggingSource)
                             .listRowBackground(
                                 UnevenRoundedRectangle(
-                                    topLeadingRadius: 8,
-                                    bottomLeadingRadius: collapsed ? 8 : 0,
-                                    bottomTrailingRadius: collapsed ? 8 : 0,
-                                    topTrailingRadius: 8,
+                                    topLeadingRadius: Radius.panel,
+                                    bottomLeadingRadius: collapsed ? Radius.panel : 0,
+                                    bottomTrailingRadius: collapsed ? Radius.panel : 0,
+                                    topTrailingRadius: Radius.panel,
                                     style: .continuous
                                 )
                                 .fill(Color.grouped)
-                                .padding(.top, 7)
+                                .padding(.top, Space.xs)
                             )
                     }
                 }
                 .listStyle(.sidebar)
                 // In full screen the title bar collapses and the list would
                 // sit flush against the panel's top edge.
-                .padding(.top, 6)
+                .padding(.top, Space.xs)
             }
         }
         .scrollContentBackground(.hidden)
@@ -82,7 +82,7 @@ struct SidebarView: View {
         // chrome (uiLanguage = "ar") NSToolbar pushes the items into its
         // overflow menu, so keep an always-visible home for them here.
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            HStack(spacing: 16) {
+            HStack(spacing: Space.l) {
                 Button {
                     model.chooseFolder()
                 } label: {
@@ -116,8 +116,8 @@ struct SidebarView: View {
             }
             .buttonStyle(.borderless)
             .foregroundStyle(Color.slate)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
+            .padding(.horizontal, Space.m)
+            .padding(.vertical, Space.s)
             .background(Color.panel)
         }
     }
@@ -126,7 +126,7 @@ struct SidebarView: View {
     // than on the row, so the gaps between them keep the arrow.
 
     private var emptyState: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: Space.m) {
             Text("No folders yet")
                 .foregroundStyle(Color.slate)
             Button("Add Folder…") { model.chooseFolder() }
@@ -182,7 +182,7 @@ private struct SourceDisclosure: View {
         DisclosureGroup(isExpanded: windowState.expansionBinding(for: root)) {
             NodeRows(parent: root, isTail: true)
         } label: {
-            HStack(spacing: 6) {
+            HStack(spacing: Space.xs) {
                 // Leading type icon so each root reads at a glance: a folder for
                 // a local folder, the GitHub mark for a repo, stacked pages for
                 // the loose "Opened Files".
@@ -284,14 +284,14 @@ private struct NodeRows: View {
     /// the panel's final row, with the tree indent guide down the leading edge.
     private func rowBackground(bottom: Bool) -> some View {
         UnevenRoundedRectangle(
-            bottomLeadingRadius: bottom ? 8 : 0,
-            bottomTrailingRadius: bottom ? 8 : 0,
+            bottomLeadingRadius: bottom ? Radius.panel : 0,
+            bottomTrailingRadius: bottom ? Radius.panel : 0,
             style: .continuous
         )
         .fill(Color.grouped)
         .overlay(alignment: .leading) {
             Rectangle().fill(Color.slate.opacity(0.22)).frame(width: 1)
-                .padding(.leading, 15)
+                .padding(.leading, Space.l)
         }
     }
 
@@ -325,7 +325,7 @@ private struct NodeRows: View {
         } else if let failure = model.directoryErrors[parent] {
             // A folder that can't be fetched says so and offers another go,
             // rather than sitting on a spinner that never resolves.
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: Space.xxs) {
                 Text(verbatim: failure)
                     .foregroundStyle(Color.warning)
                     .lineLimit(3)
@@ -363,7 +363,7 @@ private struct NodeLabel: View {
     private var isRenaming: Bool { windowState.renaming == node.id }
 
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: Space.xs) {
             Image(systemName: node.isDirectory ? "folder" : "doc.text")
                 .foregroundStyle(Color.slate)
                 .imageScale(.small)
@@ -390,7 +390,7 @@ private struct NodeLabel: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, Space.hair)
         .contentShape(Rectangle())
         .contextMenu {
             if !node.isDirectory {

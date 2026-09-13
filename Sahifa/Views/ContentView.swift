@@ -363,7 +363,7 @@ private struct DocumentPlaceholder: View {
     let retry: (() -> Void)?
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: Space.m) {
             message
                 .font(.custom("IBMPlexSans", size: 13))
                 .foregroundStyle(Color.slate)
@@ -372,7 +372,7 @@ private struct DocumentPlaceholder: View {
                 Button("Try Again", action: retry)
             }
         }
-        .padding(32)
+        .padding(Space.xxl)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.paper)
     }
@@ -386,7 +386,7 @@ private struct SaveFailedBanner: View {
     @ObservedObject var document: DocumentModel
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Space.s) {
             Image(systemName: "arrow.trianglehead.2.clockwise.rotate.90")
                 .foregroundStyle(Color.warning)
                 .accessibilityHidden(true)
@@ -400,8 +400,8 @@ private struct SaveFailedBanner: View {
         }
         .font(.custom("IBMPlexSans", size: 12))
         .foregroundStyle(Color.slate)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
+        .padding(.horizontal, Space.m)
+        .padding(.vertical, Space.xs)
         .background(Color.panel)
     }
 }
@@ -410,7 +410,7 @@ private struct SaveFailedBanner: View {
 /// into a document that silently discards their work.
 private struct ReadOnlyBanner: View {
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Space.s) {
             Image(systemName: "eye")
                 .foregroundStyle(Color.slate)
                 .accessibilityHidden(true)
@@ -419,8 +419,8 @@ private struct ReadOnlyBanner: View {
         }
         .font(.custom("IBMPlexSans", size: 12))
         .foregroundStyle(Color.slate)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.horizontal, Space.m)
+        .padding(.vertical, Space.xs)
         .background(Color.panel)
     }
 }
@@ -433,7 +433,7 @@ private struct ConflictBanner: View {
     @ObservedObject var document: DocumentModel
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: Space.m) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(Color.warning)
                 .accessibilityHidden(true)   // the sentence beside it says this
@@ -444,8 +444,8 @@ private struct ConflictBanner: View {
             Button("Reload from Disk") { document.resolveUsingDisk() }
         }
         .font(.custom("IBMPlexSans", size: 12))
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
+        .padding(.horizontal, Space.m)
+        .padding(.vertical, Space.xs)
         .background(Color.panel)
     }
 }

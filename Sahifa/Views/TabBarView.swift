@@ -123,7 +123,7 @@ private struct TabButton: View {
     private static let detachThreshold: CGFloat = 44
 
     var body: some View {
-        HStack(spacing: Space.xs - 2) {
+        HStack(spacing: Space.xs) {
             title
                 .font(Typography.label)
                 .lineLimit(1)
@@ -143,8 +143,8 @@ private struct TabButton: View {
             .accessibilityLabel(Text("Close Tab"))
             .pointerCursor(.pointingHand)
         }
-        .padding(.horizontal, Space.s)
-        .padding(.vertical, Space.xs)
+        .padding(.horizontal, Space.m)
+        .padding(.vertical, Space.s)
         .frame(maxWidth: 200, alignment: .leading)
         .background(isActive ? Color.paper : Color.panel)
         .overlay(alignment: .bottom) {

@@ -41,20 +41,31 @@ enum Brand {
 /// Spacing scale. Chrome padding and gaps come from here rather than from
 /// numbers typed at each call site, so a row in the sidebar and a tab in the
 /// strip stay on the same rhythm.
+///
+/// Derived from what the chrome already used, not invented: the first cut of
+/// this scale (4/8/12/16/24/32) missed 2, 6, 7, 10 and 14 entirely, which is
+/// how call sites ended up writing `Space.xs - 2` to mean 6 — an expression
+/// less readable than the literal it replaced. Tight chrome genuinely needs
+/// 2pt steps at the bottom of the range, so the scale carries them and the
+/// gaps widen as the values grow.
 enum Space {
+    static let hair: CGFloat = 2
     static let xxs: CGFloat = 4
-    static let xs: CGFloat = 8
-    static let s: CGFloat = 12
-    static let m: CGFloat = 16
-    static let l: CGFloat = 24
-    static let xl: CGFloat = 32
+    static let xs: CGFloat = 6
+    static let s: CGFloat = 8
+    static let m: CGFloat = 12
+    static let l: CGFloat = 16
+    static let xl: CGFloat = 24
+    static let xxl: CGFloat = 32
 }
 
-/// Corner radii. Two only: `small` for controls and chips, `large` for the
-/// panels that group them.
+/// Corner radii, also taken from what the app draws. The previous values (6
+/// and 10) matched nothing on screen and had no call sites at all; the only
+/// radii the design actually uses are the 8pt sidebar panels and code blocks,
+/// and the 4pt inline-code chip.
 enum Radius {
-    static let small: CGFloat = 6
-    static let large: CGFloat = 10
+    static let chip: CGFloat = 4
+    static let panel: CGFloat = 8
 }
 
 /// Chrome type. Body text lives in the editor and is set by FontLibrary from

@@ -6,7 +6,7 @@ import SwiftUI
 struct FormatBarView: View {
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: Space.xxs) {
             Menu {
                 Button("Heading 1") { sendToEditor(#selector(BidiTextView.sahifaHeading1(_:))) }
                 Button("Heading 2") { sendToEditor(#selector(BidiTextView.sahifaHeading2(_:))) }
@@ -55,15 +55,15 @@ struct FormatBarView: View {
         .buttonStyle(.borderless)
         .imageScale(.medium)
         .foregroundStyle(Color.slate)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.horizontal, Space.m)
+        .padding(.vertical, Space.xs)
         .background(Color.panel)
     }
 
     private var barDivider: some View {
         Divider()
             .frame(height: 14)
-            .padding(.horizontal, 3)
+            .padding(.horizontal, Space.hair)
     }
 
     /// `.help` is a tooltip and a VoiceOver *hint*, not a name — without an
