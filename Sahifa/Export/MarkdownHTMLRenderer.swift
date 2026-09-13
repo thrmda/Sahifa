@@ -159,7 +159,10 @@ enum MarkdownHTMLRenderer {
       font-family: "IBM Plex Sans", "IBM Plex Sans Arabic", system-ui, sans-serif;
       line-height: 1.65; margin: 0;
     }
-    main { max-width: 46rem; margin: 0 auto; padding: 2.2rem 1.6rem; }
+    /* 34rem of text between the gutters — the same measure the editor caps to,
+       so a line wraps at roughly the same word in both panes. Print resets
+       this below; a PDF gets the full page width. */
+    main { max-width: 40rem; margin: 0 auto; padding: 2.2rem 3rem; }
     h1, h2, h3, h4, h5, h6 { line-height: 1.25; margin: 1.4em 0 0.5em; }
     h1 { font-size: 1.9rem; } h2 { font-size: 1.55rem; } h3 { font-size: 1.28rem; }
     h4 { font-size: 1.1rem; }

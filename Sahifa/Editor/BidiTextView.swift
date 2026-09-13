@@ -13,8 +13,21 @@ final class BidiTextView: NSTextView {
 
     private let barsOverlay = DirectionBarsOverlay()
 
+    /// Widest the text column is allowed to get, in points. Beyond this the
+    /// side insets grow instead, centring the column — a line that runs the
+    /// full width of a 27-inch pane is unreadable. Set by MarkdownEditor from
+    /// the current base font size; 0 means "no cap" (behave as before).
+    var maxTextWidth: CGFloat = 0 {
+        didSet { if maxTextWidth != oldValue { updateTextInsets() } }
+    }
+
+    /// Inset used when the pane is narrower than the cap — the original
+    /// behaviour, and the floor for the centring inset.
+    static let minimumSideInset: CGFloat = 28
+
     override func layout() {
         super.layout()
+        updateTextInsets()
         if barsOverlay.superview !== self {
             barsOverlay.textView = self
             addSubview(barsOverlay)
@@ -22,6 +35,23 @@ final class BidiTextView: NSTextView {
         if barsOverlay.frame != bounds {
             barsOverlay.frame = bounds
         }
+    }
+
+    /// Grows the horizontal inset so the text column stays centred at its
+    /// capped width. The container tracks the view width, so widening the
+    /// inset is what narrows the column — and it keeps the caret, selection
+    /// and find-bar geometry consistent, which setting an explicit container
+    /// size would not.
+    private func updateTextInsets() {
+        let side: CGFloat
+        if maxTextWidth > 0, bounds.width - 2 * Self.minimumSideInset > maxTextWidth {
+            side = ((bounds.width - maxTextWidth) / 2).rounded(.down)
+        } else {
+            side = Self.minimumSideInset
+        }
+        guard abs(textContainerInset.width - side) > 0.5 else { return }
+        textContainerInset = NSSize(width: side, height: textContainerInset.height)
+        refreshDirectionBars()
     }
 
     func refreshDirectionBars() {
@@ -103,6 +133,9 @@ private final class DirectionBarsOverlay: NSView {
 
             let isRTL = (storage.attribute(.sahifaDirection, at: offset, effectiveRange: nil) as? Int) == 1
 
+            // Positioned off the inset, not off the pane edge, so the bars
+            // stay pinned to the text column once it is capped and centred:
+            // the container spans [inset, width - inset] by construction.
             let barWidth: CGFloat = 3
             let x: CGFloat = isRTL
                 ? self.bounds.width - textView.textContainerInset.width + 9

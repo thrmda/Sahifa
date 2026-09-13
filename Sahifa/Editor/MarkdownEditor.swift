@@ -12,6 +12,17 @@ struct MarkdownEditor: NSViewRepresentable {
     var isEditable: Bool = true
     var scrollSync: ScrollSync? = nil
 
+    /// Comfortable measure for the text column: ~34em of the base size, which
+    /// is around 65 Latin characters — the span the eye tracks without losing
+    /// its place. Scales with the font-size setting, and matches the 34rem
+    /// text column the preview and export CSS use, so a line wraps at roughly
+    /// the same word in both panes.
+    static let measureEm: CGFloat = 34
+
+    static func measureCap(forFontSize size: CGFloat) -> CGFloat {
+        (measureEm * size).rounded()
+    }
+
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
@@ -34,7 +45,8 @@ struct MarkdownEditor: NSViewRepresentable {
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [NSView.AutoresizingMask.width]
-        textView.textContainerInset = NSSize(width: 28, height: 24)
+        textView.textContainerInset = NSSize(width: BidiTextView.minimumSideInset, height: 24)
+        textView.maxTextWidth = Self.measureCap(forFontSize: CGFloat(fontSize))
 
         textView.isRichText = false
         textView.allowsUndo = true
@@ -99,6 +111,8 @@ struct MarkdownEditor: NSViewRepresentable {
             textView.setSelectedRange(NSRange(location: min(selection.location, length), length: 0))
             needsRestyle = true
         }
+
+        textView.maxTextWidth = Self.measureCap(forFontSize: CGFloat(fontSize))
 
         let theme = EditorTheme(fontSize: CGFloat(fontSize), lineHeightMultiple: CGFloat(lineSpacing))
         if coordinator.styler.theme != theme {
