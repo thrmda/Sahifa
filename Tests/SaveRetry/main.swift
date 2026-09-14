@@ -28,7 +28,8 @@ final class FlakyStore: DocumentStore, @unchecked Sendable {
     func delete(_ id: DocumentID) async throws {}
     func move(_ id: DocumentID, to destination: DocumentID) async throws {}
 
-    func write(_ text: String, to id: DocumentID, expecting: VersionToken?) async throws -> VersionToken? {
+    func write(_ text: String, to id: DocumentID, expecting: VersionToken?,
+               encoding: TextEncoding) async throws -> VersionToken? {
         writeAttempts += 1
         if failPermanently { throw RemoteStoreError.notAuthorised }
         if failWrites { throw URLError(.notConnectedToInternet) }

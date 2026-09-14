@@ -409,12 +409,20 @@ private struct SaveFailedBanner: View {
 /// Says plainly that edits won't be saved, rather than letting someone type
 /// into a document that silently discards their work.
 private struct ReadOnlyBanner: View {
+    /// This one file can't be written back faithfully, as opposed to the
+    /// whole source being unwritable.
+    let isUndecodable: Bool
+
     var body: some View {
         HStack(spacing: Space.s) {
             Image(systemName: "eye")
                 .foregroundStyle(Color.slate)
                 .accessibilityHidden(true)
-            Text("Read-only. Saving to this source isn't supported yet.")
+            if isUndecodable {
+                Text("This file isn't UTF-8 or UTF-16 text, so it opened read-only to keep it intact.")
+            } else {
+                Text("Read-only. Saving to this source isn't supported yet.")
+            }
             Spacer(minLength: 0)
         }
         .font(.custom("IBMPlexSans", size: 12))
@@ -522,7 +530,7 @@ struct DocumentEditorView: View {
                 Divider()
             }
             if document.isReadOnly, document.loadState == .ready {
-                ReadOnlyBanner()
+                ReadOnlyBanner(isUndecodable: document.isUndecodable)
                 Divider()
             }
             if !document.hasConflict,

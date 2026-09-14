@@ -14,6 +14,95 @@ struct DocumentContents: Sendable {
     let text: String
     /// Absent when the document doesn't exist yet.
     let version: VersionToken?
+    /// How to turn the text back into bytes. nil when the stored bytes aren't
+    /// text Sahifa can write back faithfully: `text` is then only a lossy
+    /// rendering for display, and saving it would destroy every character it
+    /// couldn't read.
+    let encoding: TextEncoding?
+
+    init(text: String, version: VersionToken?, encoding: TextEncoding? = .utf8) {
+        self.text = text
+        self.version = version
+        self.encoding = encoding
+    }
+
+    init(data: Data, version: VersionToken?) {
+        if let decoded = TextEncoding.decode(data) {
+            self.init(text: decoded.text, version: version, encoding: decoded.encoding)
+        } else {
+            self.init(text: String(decoding: data, as: UTF8.self), version: version, encoding: nil)
+        }
+    }
+}
+
+/// The Unicode encodings a document can be read in and written back in, byte
+/// for byte. Anything else — a Windows-1256 export, say — has no case here on
+/// purpose: guessing a legacy encoding and converting it on save would rewrite
+/// someone's file in an encoding they didn't choose.
+enum TextEncoding: Hashable, Sendable {
+    case utf8
+    /// Kept rather than dropped on save: Excel only reads a UTF-8 CSV as
+    /// UTF-8 when the mark is there, and shows Arabic as garbage without it.
+    case utf8WithBOM
+    case utf16LittleEndian
+    case utf16BigEndian
+
+    private static let utf8BOM: [UInt8] = [0xEF, 0xBB, 0xBF]
+
+    /// Strict: the bytes must be valid UTF-8, or UTF-16 behind a byte-order
+    /// mark. Foundation's own UTF-8 reading can't be used for this — it
+    /// silently strips a BOM, so the file would lose it on the next save.
+    static func decode(_ data: Data) -> (text: String, encoding: TextEncoding)? {
+        let bytes = [UInt8](data)
+        // UTF-32 marks begin with the UTF-16 ones, so rule them out first.
+        if bytes.starts(with: [0xFF, 0xFE, 0x00, 0x00]) || bytes.starts(with: [0x00, 0x00, 0xFE, 0xFF]) {
+            return nil
+        }
+        if bytes.starts(with: utf8BOM) {
+            return utf8(bytes.dropFirst(3)).map { ($0, .utf8WithBOM) }
+        }
+        if bytes.starts(with: [0xFF, 0xFE]) {
+            return utf16(bytes.dropFirst(2), bigEndian: false).map { ($0, .utf16LittleEndian) }
+        }
+        if bytes.starts(with: [0xFE, 0xFF]) {
+            return utf16(bytes.dropFirst(2), bigEndian: true).map { ($0, .utf16BigEndian) }
+        }
+        return utf8(bytes[...]).map { ($0, .utf8) }
+    }
+
+    func encode(_ text: String) -> Data {
+        switch self {
+        case .utf8:
+            return Data(text.utf8)
+        case .utf8WithBOM:
+            return Data(Self.utf8BOM + Array(text.utf8))
+        case .utf16LittleEndian:
+            return Data([0xFF, 0xFE] + text.utf16.flatMap { [UInt8($0 & 0xFF), UInt8($0 >> 8)] })
+        case .utf16BigEndian:
+            return Data([0xFE, 0xFF] + text.utf16.flatMap { [UInt8($0 >> 8), UInt8($0 & 0xFF)] })
+        }
+    }
+
+    /// Decoding replaces anything invalid with U+FFFD, so the bytes were valid
+    /// exactly when re-encoding the result gives them back.
+    private static func utf8(_ bytes: ArraySlice<UInt8>) -> String? {
+        let text = String(decoding: bytes, as: UTF8.self)
+        return text.utf8.elementsEqual(bytes) ? text : nil
+    }
+
+    private static func utf16(_ bytes: ArraySlice<UInt8>, bigEndian: Bool) -> String? {
+        guard bytes.count % 2 == 0 else { return nil }
+        var units: [UInt16] = []
+        units.reserveCapacity(bytes.count / 2)
+        var index = bytes.startIndex
+        while index < bytes.endIndex {
+            let first = UInt16(bytes[index]), second = UInt16(bytes[index + 1])
+            units.append(bigEndian ? first << 8 | second : second << 8 | first)
+            index += 2
+        }
+        let text = String(decoding: units, as: UTF16.self)
+        return text.utf16.elementsEqual(units) ? text : nil
+    }
 }
 
 enum DocumentStoreError: Error {
@@ -49,10 +138,11 @@ protocol DocumentStore: Sendable {
     /// something that was already done.
     ///
     /// A nil `expecting` means "this should not exist yet", which is how a
-    /// document is created.
+    /// document is created. `encoding` is the one the document was read in,
+    /// so a save never changes a file's encoding or drops its byte-order mark.
     @discardableResult
     func write(_ text: String, to id: DocumentID,
-               expecting: VersionToken?) async throws -> VersionToken?
+               expecting: VersionToken?, encoding: TextEncoding) async throws -> VersionToken?
 
     func delete(_ id: DocumentID) async throws
 
@@ -64,6 +154,14 @@ extension DocumentStore {
     /// Creating, renaming and deleting all require writing, so one flag
     /// governs the lot rather than each affordance guessing separately.
     var canOrganise: Bool { !isReadOnly }
+
+    /// With no existing encoding to keep — creating a document — text is
+    /// written as plain UTF-8.
+    @discardableResult
+    func write(_ text: String, to id: DocumentID,
+               expecting: VersionToken?) async throws -> VersionToken? {
+        try await write(text, to: id, expecting: expecting, encoding: .utf8)
+    }
 }
 
 /// Reads and writes documents in one local folder.
@@ -93,8 +191,15 @@ struct LocalFileStore: DocumentStore {
     /// A local file is genuinely available at once, so both entry points
     /// resolve to the same synchronous read.
     func readImmediately(_ id: DocumentID) -> DocumentContents? {
-        let text = (try? String(contentsOf: url(for: id), encoding: .utf8)) ?? ""
-        return DocumentContents(text: text, version: version(of: id))
+        let version = version(of: id)
+        guard let data = try? Data(contentsOf: url(for: id)) else {
+            // Absent is a document yet to be written. Present but unreadable
+            // (no permission, say) must not come back as an empty, savable
+            // document — the first autosave would replace the file.
+            return DocumentContents(text: "", version: version,
+                                    encoding: version == nil ? .utf8 : nil)
+        }
+        return DocumentContents(data: data, version: version)
     }
 
     func read(_ id: DocumentID) async throws -> DocumentContents {
@@ -134,11 +239,11 @@ struct LocalFileStore: DocumentStore {
     /// which beats dropping it.
     @discardableResult
     func write(_ text: String, to id: DocumentID,
-               expecting: VersionToken?) async throws -> VersionToken? {
+               expecting: VersionToken?, encoding: TextEncoding) async throws -> VersionToken? {
         if let current = version(of: id), current != expecting {
             throw DocumentStoreError.versionConflict
         }
-        try text.write(to: url(for: id), atomically: true, encoding: .utf8)
+        try encoding.encode(text).write(to: url(for: id), options: .atomic)
         return version(of: id)
     }
 
