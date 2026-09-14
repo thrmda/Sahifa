@@ -1192,6 +1192,46 @@
         }
       }
     },
+    "Paste as Table": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لصق كجدول"
+          }
+        }
+      }
+    },
+    "Convert Selection to Table": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تحويل التحديد إلى جدول"
+          }
+        }
+      }
+    },
+    "Copy Table as CSV": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "نسخ الجدول بصيغة CSV"
+          }
+        }
+      }
+    },
+    "Copy as Markdown Table": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "نسخ كجدول Markdown"
+          }
+        }
+      }
+    },
     "Cycle View": {
       "localizations": {
         "ar": {

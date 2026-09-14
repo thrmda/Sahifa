@@ -250,8 +250,8 @@ struct SahifaCommands: Commands {
             }
         }
         CommandMenu("Format") {
-            // Every item is a Markdown edit. In a CSV file it would only put
-            // markup into the data, so the whole menu is off there.
+            // Every item here works on Markdown source. In a CSV file it would
+            // only put markup into the data, so the group is off there.
             Group {
                 Button("Bold") { send(#selector(BidiTextView.sahifaToggleBold(_:))) }
                     .keyboardShortcut("b", modifiers: .command)
@@ -284,8 +284,24 @@ struct SahifaCommands: Commands {
                 Button("Image") { send(#selector(BidiTextView.sahifaInsertImage(_:))) }
                 Button("Horizontal Rule") { send(#selector(BidiTextView.sahifaInsertHorizontalRule(_:))) }
                 Button("Table") { send(#selector(BidiTextView.sahifaInsertTable(_:))) }
+                Divider()
+                Button("Paste as Table") { send(#selector(BidiTextView.sahifaPasteAsTable(_:))) }
+                Button("Convert Selection to Table") {
+                    send(#selector(BidiTextView.sahifaConvertSelectionToTable(_:)))
+                }
+                Button("Copy Table as CSV") { send(#selector(BidiTextView.sahifaCopyTableAsCSV(_:))) }
             }
             .disabled(windowState?.document?.kind.isTable == true)
+            Divider()
+            // The whole file, and straight from the document rather than
+            // through the editor: View Only, where a table opens, has none.
+            Button("Copy as Markdown Table") {
+                guard let document = windowState?.document, document.kind.isTable else { return }
+                let rows = DelimitedText(parsing: document.text, kind: document.kind).rows
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(MarkdownTable.markdown(from: rows), forType: .string)
+            }
+            .disabled(windowState?.document?.kind.isTable != true)
         }
     }
 }
