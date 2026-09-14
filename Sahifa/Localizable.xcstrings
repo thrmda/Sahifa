@@ -1066,6 +1066,16 @@
         }
       }
     },
+    "This file isn't UTF-8 or UTF-16 text, so it opened read-only to keep it intact.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "هذا الملف ليس نصًا بترميز UTF-8 أو UTF-16، لذا فُتح للقراءة فقط حفاظًا عليه."
+          }
+        }
+      }
+    },
     "This folder is missing": {
       "localizations": {
         "ar": {

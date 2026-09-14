@@ -116,6 +116,13 @@ struct GitHubStore: DocumentStore {
     }
 
     func read(_ id: DocumentID) async throws -> DocumentContents {
+        let (data, version) = try await readData(id)
+        return DocumentContents(data: data, version: version)
+    }
+
+    /// The document's stored bytes, undecoded — what a move copies, so a file
+    /// that isn't text Sahifa can decode still arrives intact.
+    private func readData(_ id: DocumentID) async throws -> (Data, VersionToken) {
         let data = try await fetch(endpoint(for: id))
         let entry = try JSONDecoder().decode(Entry.self, from: data)
         let version = VersionToken(raw: entry.sha)
@@ -123,9 +130,9 @@ struct GitHubStore: DocumentStore {
         // Files over about a megabyte come back with the content omitted and
         // have to be fetched as a blob instead.
         if let encoded = entry.content, !encoded.isEmpty, entry.encoding == "base64" {
-            return DocumentContents(text: Self.decode(encoded), version: version)
+            return (try Self.decode(encoded), version)
         }
-        return DocumentContents(text: try await readBlob(sha: entry.sha), version: version)
+        return (try await readBlob(sha: entry.sha), version)
     }
 
     // MARK: Writing
@@ -136,7 +143,12 @@ struct GitHubStore: DocumentStore {
     /// conflict handling above it needs no special case for either.
     @discardableResult
     func write(_ text: String, to id: DocumentID,
-               expecting: VersionToken?) async throws -> VersionToken? {
+               expecting: VersionToken?, encoding: TextEncoding) async throws -> VersionToken? {
+        try await write(data: encoding.encode(text), to: id, expecting: expecting)
+    }
+
+    private func write(data: Data, to id: DocumentID,
+                       expecting: VersionToken?) async throws -> VersionToken? {
         guard let token, !token.isEmpty else { throw RemoteStoreError.readOnly }
         var request = URLRequest(url: endpoint(for: id))
         request.httpMethod = "PUT"
@@ -148,7 +160,7 @@ struct GitHubStore: DocumentStore {
 
         var body: [String: Any] = [
             "message": "Update \(id.name)",
-            "content": Data(text.utf8).base64EncodedString(),
+            "content": data.base64EncodedString(),
         ]
         // Absent sha means "create"; GitHub refuses an update without one.
         if let expecting { body["sha"] = expecting.raw }
@@ -210,27 +222,31 @@ struct GitHubStore: DocumentStore {
     /// is recoverable, where the reverse order could lose it outright.
     func move(_ id: DocumentID, to destination: DocumentID) async throws {
         guard let token, !token.isEmpty else { throw RemoteStoreError.readOnly }
-        let current = try await read(id)
-        _ = try await write(current.text, to: destination, expecting: nil)
+        // The bytes, not the decoded text: a file in an encoding Sahifa can't
+        // decode would otherwise arrive at its new name as that lossy text.
+        let (data, _) = try await readData(id)
+        _ = try await write(data: data, to: destination, expecting: nil)
         try await delete(id)
     }
 
-    private func readBlob(sha: String) async throws -> String {
+    private func readBlob(sha: String) async throws -> Data {
         let url = URL(string:
             "https://api.github.com/repos/\(owner)/\(repository)/git/blobs/\(sha)")!
         let data = try await fetch(url)
         struct Blob: Decodable { let content: String; let encoding: String }
         let blob = try JSONDecoder().decode(Blob.self, from: data)
-        guard blob.encoding == "base64" else { return blob.content }
-        return Self.decode(blob.content)
+        guard blob.encoding == "base64" else { return Data(blob.content.utf8) }
+        return try Self.decode(blob.content)
     }
 
     /// GitHub wraps its base64 at 60 columns, which Foundation rejects unless
-    /// told to ignore the line breaks.
-    private static func decode(_ encoded: String) -> String {
-        guard let data = Data(base64Encoded: encoded,
-                              options: .ignoreUnknownCharacters) else { return "" }
-        return String(data: data, encoding: .utf8) ?? ""
+    /// told to ignore the line breaks. A payload that still won't decode is a
+    /// failed read, not an empty document — an empty one would be savable.
+    private static func decode(_ encoded: String) throws -> Data {
+        guard let data = Data(base64Encoded: encoded, options: .ignoreUnknownCharacters) else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        return data
     }
 }
 

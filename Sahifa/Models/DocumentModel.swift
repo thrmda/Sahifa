@@ -31,8 +31,14 @@ final class DocumentModel: ObservableObject, Identifiable {
     }
     @Published private(set) var loadState: LoadState
 
-    /// Browsable but not savable — a repository with no credential.
-    var isReadOnly: Bool { store.isReadOnly }
+    /// The file's bytes aren't text Sahifa can write back faithfully — a
+    /// legacy encoding, or a file it wasn't allowed to read. What's shown is a
+    /// lossy rendering, so saving it would destroy the original.
+    @Published private(set) var isUndecodable = false
+
+    /// Browsable but not savable — a repository with no credential, or a file
+    /// that couldn't be decoded.
+    var isReadOnly: Bool { store.isReadOnly || isUndecodable }
 
     /// Where a save is in its life. Distinct from a conflict, which needs a
     /// decision — these states resolve on their own or with one retry.
@@ -64,6 +70,8 @@ final class DocumentModel: ObservableObject, Identifiable {
     private let store: any DocumentStore
     private var savedText: String
     private var version: VersionToken?
+    /// What the document was read in, and so what it's written back in.
+    private var encoding: TextEncoding = .utf8
     private var cancellable: AnyCancellable?
 
     var displayName: String { id.name }
@@ -78,6 +86,8 @@ final class DocumentModel: ObservableObject, Identifiable {
             self.text = immediate.text
             self.savedText = immediate.text
             self.version = immediate.version
+            self.encoding = immediate.encoding ?? .utf8
+            self.isUndecodable = immediate.encoding == nil
             self.loadState = .ready
         } else {
             self.text = ""
@@ -104,6 +114,8 @@ final class DocumentModel: ObservableObject, Identifiable {
             text = contents.text
             savedText = contents.text
             version = contents.version
+            encoding = contents.encoding ?? .utf8
+            isUndecodable = contents.encoding == nil
             loadState = .ready
         } catch {
             loadState = .failed(error.localizedDescription)
@@ -193,7 +205,8 @@ final class DocumentModel: ObservableObject, Identifiable {
         saveStatus = .saving
         let attempted = text
         do {
-            version = try await store.write(attempted, to: id, expecting: version)
+            version = try await store.write(attempted, to: id, expecting: version,
+                                            encoding: encoding)
             // Compare against what was actually sent: more may have been typed
             // while the request was in flight, and that is still unsaved.
             if text == attempted { savedText = attempted }
@@ -259,6 +272,9 @@ final class DocumentModel: ObservableObject, Identifiable {
         text = contents.text
         savedText = contents.text
         version = contents.version
+        // Another program may have converted the file, in either direction.
+        encoding = contents.encoding ?? .utf8
+        isUndecodable = contents.encoding == nil
         hasConflict = false
         lastError = nil
     }
