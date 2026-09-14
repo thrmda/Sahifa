@@ -49,20 +49,24 @@ struct StatusBarView: View {
                     .foregroundStyle(Color.warning)
             }
             Spacer(minLength: 0)
-            Button {
-                showFormatBar.toggle()
-            } label: {
-                // Not `textformat`/`textformat.alt` — both carry a letterform
-                // that localizes by process language and clashes with the
-                // chrome under an in-app language override. The pilcrow (¶) is
-                // a script-neutral formatting mark.
-                Image(systemName: "paragraphsign")
-                    .foregroundStyle(showFormatBar ? Color.sage : Color.slate)
+            // A table never shows the Format Bar, so a toggle for it would do
+            // nothing visible.
+            if !kind.isTable {
+                Button {
+                    showFormatBar.toggle()
+                } label: {
+                    // Not `textformat`/`textformat.alt` — both carry a letterform
+                    // that localizes by process language and clashes with the
+                    // chrome under an in-app language override. The pilcrow (¶) is
+                    // a script-neutral formatting mark.
+                    Image(systemName: "paragraphsign")
+                        .foregroundStyle(showFormatBar ? Color.sage : Color.slate)
+                }
+                .buttonStyle(.borderless)
+                .help(showFormatBar ? Text("Hide Format Bar") : Text("Show Format Bar"))
+                .accessibilityLabel(showFormatBar ? Text("Hide Format Bar") : Text("Show Format Bar"))
+                .pointerCursor(.pointingHand)
             }
-            .buttonStyle(.borderless)
-            .help(showFormatBar ? Text("Hide Format Bar") : Text("Show Format Bar"))
-            .accessibilityLabel(showFormatBar ? Text("Hide Format Bar") : Text("Show Format Bar"))
-            .pointerCursor(.pointingHand)
             Button {
                 focusMode.toggle()
             } label: {

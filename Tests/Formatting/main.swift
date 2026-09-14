@@ -167,6 +167,17 @@ func run() {
     }
 
     do {
+        let board = NSPasteboard(name: NSPasteboard.Name("sahifa-test-crlf-\(getpid())"))
+        board.clearContents()
+        board.setString("a,b\n1,2", forType: .string)
+        let e = makeEditor("Intro\r\n", select: NSRange(location: 7, length: 0))
+        e.pasteTable(from: board)
+        check("in a CRLF file, an existing CRLF counts as one line break, and new ones match",
+              e.string == "Intro\r\n\r\n| a | b |\r\n| --- | --- |\r\n| 1 | 2 |\r\n", e.string.debugDescription)
+        board.releaseGlobally()
+    }
+
+    do {
         let text = "before\n\na,b\n1,2\n\nafter"
         let e = makeEditor(text, select: (text as NSString).range(of: "a,b\n1,2"))
         e.sahifaConvertSelectionToTable(nil)

@@ -79,7 +79,9 @@ on disk.
 - **Plain text files** in a folder you choose — Markdown (`.md`, `.markdown`,
   `.mdown`, `.mkd`, `.mkdn`, `.mdx`) and CSV/TSV. A file keeps the encoding
   it was saved in, byte-order mark included; one that isn't UTF-8 or UTF-16
-  opens read-only rather than risk being saved over. No library format, no
+  opens read-only rather than risk being saved over. An Arabic export from
+  Excel on Windows can be reopened as Windows-1256, and converted to UTF-8
+  when you choose to. No library format, no
   database, no telemetry; the only network use is the GitHub repositories you
   add yourself.
 

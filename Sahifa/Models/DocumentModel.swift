@@ -36,6 +36,21 @@ final class DocumentModel: ObservableObject, Identifiable {
     /// lossy rendering, so saving it would destroy the original.
     @Published private(set) var isUndecodable = false
 
+    /// An undecodable file the user asked to see as Windows-1256. The text is
+    /// readable now, but the file stays read-only: saving it back as
+    /// Windows-1256 isn't supported, and converting it is a separate, explicit
+    /// step (`convertToUTF8`).
+    @Published private(set) var isShownAsWindows1256 = false
+
+    /// The bytes behind an undecodable document, for reopening it.
+    private var undecodedData: Data?
+
+    var canReopenAsWindows1256: Bool {
+        isUndecodable && !isShownAsWindows1256 && undecodedData != nil
+    }
+
+    var canConvertToUTF8: Bool { isShownAsWindows1256 && !store.isReadOnly }
+
     /// Browsable but not savable — a repository with no credential, or a file
     /// that couldn't be decoded.
     var isReadOnly: Bool { store.isReadOnly || isUndecodable }
@@ -92,6 +107,7 @@ final class DocumentModel: ObservableObject, Identifiable {
             self.version = immediate.version
             self.encoding = immediate.encoding ?? .utf8
             self.isUndecodable = immediate.encoding == nil
+            self.undecodedData = immediate.undecodedData
             self.loadState = .ready
         } else {
             self.text = ""
@@ -120,6 +136,8 @@ final class DocumentModel: ObservableObject, Identifiable {
             version = contents.version
             encoding = contents.encoding ?? .utf8
             isUndecodable = contents.encoding == nil
+            undecodedData = contents.undecodedData
+            isShownAsWindows1256 = false
             loadState = .ready
         } catch {
             loadState = .failed(error.localizedDescription)
@@ -176,6 +194,34 @@ final class DocumentModel: ObservableObject, Identifiable {
             return
         }
         reload()
+    }
+
+    // MARK: Legacy encodings
+
+    /// Shows an undecodable file as Windows-1256. Nothing is written.
+    func reopenAsWindows1256() {
+        guard canReopenAsWindows1256, let data = undecodedData,
+              let decoded = TextEncoding.decodeWindows1256(data) else { return }
+        text = decoded
+        savedText = decoded
+        isShownAsWindows1256 = true
+    }
+
+    /// Rewrites a file shown as Windows-1256 as UTF-8, after which it edits
+    /// like any other. A table gets a byte-order mark, which Excel needs to
+    /// read the Arabic; Markdown doesn't. Only ever on an explicit request.
+    func convertToUTF8() {
+        guard canConvertToUTF8 else { return }
+        encoding = kind.isTable ? .utf8WithBOM : .utf8
+        isUndecodable = false
+        isShownAsWindows1256 = false
+        undecodedData = nil
+        saveTask = Task { [weak self] in await self?.write() }
+    }
+
+    /// Awaits a conversion or any other save in flight.
+    func waitForSave() async {
+        await saveTask?.value
     }
 
     // MARK: Conflict resolution
@@ -279,6 +325,8 @@ final class DocumentModel: ObservableObject, Identifiable {
         // Another program may have converted the file, in either direction.
         encoding = contents.encoding ?? .utf8
         isUndecodable = contents.encoding == nil
+        undecodedData = contents.undecodedData
+        isShownAsWindows1256 = false
         hasConflict = false
         lastError = nil
     }
