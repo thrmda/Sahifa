@@ -10,6 +10,10 @@ struct MarkdownEditor: NSViewRepresentable {
     var lineSpacing: Double
     var focusMode: Bool = false
     var isEditable: Bool = true
+    /// False for CSV and TSV: no Markdown styling, and no reading measure —
+    /// a row of data isn't prose, and wrapping it at 65 characters only
+    /// scatters it.
+    var isMarkdown: Bool = true
     var scrollSync: ScrollSync? = nil
 
     /// Comfortable measure for the text column: ~34em of the base size, which
@@ -46,7 +50,7 @@ struct MarkdownEditor: NSViewRepresentable {
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = [NSView.AutoresizingMask.width]
         textView.textContainerInset = NSSize(width: BidiTextView.minimumSideInset, height: 24)
-        textView.maxTextWidth = Self.measureCap(forFontSize: CGFloat(fontSize))
+        textView.maxTextWidth = isMarkdown ? Self.measureCap(forFontSize: CGFloat(fontSize)) : 0
 
         textView.isRichText = false
         textView.allowsUndo = true
@@ -70,6 +74,7 @@ struct MarkdownEditor: NSViewRepresentable {
         coordinator.layoutManager = layoutManager
         coordinator.styler.theme = EditorTheme(fontSize: CGFloat(fontSize),
                                                lineHeightMultiple: CGFloat(lineSpacing))
+        coordinator.styler.parsesMarkdown = isMarkdown
         textView.typingAttributes = coordinator.styler.baseAttributes()
 
         let scrollView = NSScrollView()
@@ -112,7 +117,7 @@ struct MarkdownEditor: NSViewRepresentable {
             needsRestyle = true
         }
 
-        textView.maxTextWidth = Self.measureCap(forFontSize: CGFloat(fontSize))
+        textView.maxTextWidth = isMarkdown ? Self.measureCap(forFontSize: CGFloat(fontSize)) : 0
 
         let theme = EditorTheme(fontSize: CGFloat(fontSize), lineHeightMultiple: CGFloat(lineSpacing))
         if coordinator.styler.theme != theme {

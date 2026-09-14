@@ -68,9 +68,18 @@ on disk.
   each stays in the sidebar and expands into its subfolders, loading them as
   you open them, and updating live when anything changes on disk. Files opened on their own sit under *Opened Files* instead of
   replacing what you were looking at.
-- **Plain Markdown files** in a folder you choose — `.md`, `.markdown`,
-  `.mdown`, `.mkd`, `.mkdn` and `.mdx`. No library format, no database, no
-  telemetry; the only network use is the GitHub repositories you add yourself.
+- **CSV and TSV as tables.** A `.csv`, `.tsv` or `.tab` file opens as a
+  table over its plain text, which you edit directly: the file is only ever
+  saved as the text you typed, never rewritten from the table. An Arabic
+  file puts its first column on the right, and each cell reads in its own
+  direction. The delimiter is detected, so a semicolon-separated export
+  opens correctly too. Tables export to HTML.
+- **Plain text files** in a folder you choose — Markdown (`.md`, `.markdown`,
+  `.mdown`, `.mkd`, `.mkdn`, `.mdx`) and CSV/TSV. A file keeps the encoding
+  it was saved in, byte-order mark included; one that isn't UTF-8 or UTF-16
+  opens read-only rather than risk being saved over. No library format, no
+  database, no telemetry; the only network use is the GitHub repositories you
+  add yourself.
 
 ## Requirements
 

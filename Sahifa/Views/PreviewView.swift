@@ -14,6 +14,8 @@ import WebKit
 struct MarkdownPreview: NSViewRepresentable {
     let markdown: String
     let documentID: DocumentID?
+    /// A CSV or TSV file renders as a table in the same page.
+    var kind: DocumentKind = .markdown
     var scrollSync: ScrollSync? = nil
 
     func makeCoordinator() -> Coordinator {
@@ -33,6 +35,7 @@ struct MarkdownPreview: NSViewRepresentable {
         context.coordinator.webView = webView
         scrollSync?.previewWebView = webView
         context.coordinator.loadShell()
+        context.coordinator.kind = kind
         context.coordinator.render(markdown, id: documentID, immediately: true)
         return webView
     }
@@ -40,6 +43,9 @@ struct MarkdownPreview: NSViewRepresentable {
     func updateNSView(_ webView: WKWebView, context: Context) {
         context.coordinator.scrollSync = scrollSync
         scrollSync?.previewWebView = webView
+        // Set before rendering: the kind only changes with the document, and
+        // a document change renders at once.
+        context.coordinator.kind = kind
         context.coordinator.render(markdown, id: documentID, immediately: false)
     }
 
@@ -53,6 +59,7 @@ struct MarkdownPreview: NSViewRepresentable {
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         weak var webView: WKWebView?
         var scrollSync: ScrollSync?
+        var kind: DocumentKind = .markdown
         private var shellReady = false
         private var pending: (markdown: String, resetScroll: Bool)?
         private var lastRendered: String?
@@ -96,7 +103,7 @@ struct MarkdownPreview: NSViewRepresentable {
             guard shellReady, let webView, let update = pending else { return }
             pending = nil
             lastRendered = update.markdown
-            let html = MarkdownHTMLRenderer.body(from: update.markdown)
+            let html = DocumentHTML.body(update.markdown, kind: kind)
             guard let data = try? JSONEncoder().encode(html),
                   let json = String(data: data, encoding: .utf8) else { return }
             webView.evaluateJavaScript("sahifaRender(\(json), \(update.resetScroll))") { [weak self] _, error in

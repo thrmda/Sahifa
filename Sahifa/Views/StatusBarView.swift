@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Live word/character count plus the view toggles.
+/// Live counts plus the view toggles: words and characters for prose, rows and
+/// columns for a table.
 ///
 /// Counting uses the system word enumerator (ICU-backed), which segments
 /// Arabic correctly — no whitespace splitting. It walks the whole document,
@@ -9,6 +10,7 @@ import SwiftUI
 /// twice a 60 Hz frame, and the editor is already restyling on that keystroke.
 struct StatusBarView: View {
     let text: String
+    var kind: DocumentKind = .markdown
     /// Shown only while a save is actually in flight. A local save finishes
     /// too fast to ever appear; one going over a network is worth seeing.
     var isSaving: Bool = false
@@ -33,8 +35,13 @@ struct StatusBarView: View {
             .help(Text("Toggle Sidebar"))
             .accessibilityLabel(Text("Toggle Sidebar"))
             .pointerCursor(.pointingHand)
-            Text("Words: \(counts?.words ?? 0)")
-            Text("Characters: \(counts?.characters ?? 0)")
+            if kind.isTable {
+                Text("Rows: \(counts?.rows ?? 0)")
+                Text("Columns: \(counts?.columns ?? 0)")
+            } else {
+                Text("Words: \(counts?.words ?? 0)")
+                Text("Characters: \(counts?.characters ?? 0)")
+            }
             if isSaving {
                 Text("Saving…")
             } else if isRetrying {
@@ -81,14 +88,15 @@ struct StatusBarView: View {
         .background(Color.panel)
         // Restarts on every edit, so the sleep coalesces a burst of typing
         // into one count. The first count for a document skips the wait.
-        .task(id: text) {
+        .task(id: CountRequest(text: text, kind: kind)) {
             if counts != nil {
                 try? await Task.sleep(nanoseconds: 250_000_000)
                 guard !Task.isCancelled else { return }
             }
             let snapshot = text
+            let kind = kind
             let computed = await Task.detached(priority: .utility) {
-                TextCounts(snapshot)
+                TextCounts(snapshot, kind: kind)
             }.value
             guard !Task.isCancelled else { return }
             counts = computed
@@ -113,13 +121,31 @@ struct StatusBarView: View {
     }
 }
 
-/// Word and character totals for one document. A value type so it can be
-/// computed off the main actor and handed back.
-private struct TextCounts: Equatable, Sendable {
-    let words: Int
-    let characters: Int
+/// What a count is taken of. The kind is part of it: the same text counts
+/// differently as a table.
+private struct CountRequest: Equatable {
+    let text: String
+    let kind: DocumentKind
+}
 
-    init(_ text: String) {
+/// Totals for one document: words and characters for prose, rows and columns
+/// for a table. A value type so it can be computed off the main actor and
+/// handed back.
+private struct TextCounts: Equatable, Sendable {
+    var words = 0
+    var characters = 0
+    var rows = 0
+    var columns = 0
+
+    init(_ text: String, kind: DocumentKind) {
+        if kind.isTable {
+            let table = DelimitedText(parsing: text, kind: kind)
+            // The header isn't a row of data — the same count the preview's
+            // "Showing the first N of M rows" uses.
+            rows = max(table.rows.count - 1, 0)
+            columns = table.rows.map(\.count).max() ?? 0
+            return
+        }
         var words = 0
         text.enumerateSubstrings(in: text.startIndex..<text.endIndex,
                                  options: [.byWords, .substringNotRequired, .localized]) { _, _, _, _ in

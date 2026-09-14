@@ -197,7 +197,7 @@ struct SahifaCommands: Commands {
             Divider()
             Button("Export as HTML…") {
                 if let document = windowState?.document {
-                    Exporter.shared.exportHTML(markdown: document.text,
+                    Exporter.shared.exportHTML(text: document.text, kind: document.kind,
                                                suggestedName: document.exportName)
                 }
             }
@@ -209,7 +209,9 @@ struct SahifaCommands: Commands {
                                               suggestedName: document.exportName)
                 }
             }
-            .disabled(windowState?.document == nil)
+            // A wide table would be cut off at the edge of an A4 page, so
+            // tables export as HTML only.
+            .disabled(windowState?.document == nil || windowState?.document?.kind.isTable == true)
         }
         CommandGroup(after: .sidebar) {
             Button(windowState?.sidebarVisible == true ? "Hide Sidebar" : "Show Sidebar") {
@@ -221,8 +223,8 @@ struct SahifaCommands: Commands {
             // shows which layout is current, not just a single on/off toggle.
             // ⇧⌘P advances through the three, keeping the old preview shortcut.
             Picker("View", selection: Binding(
-                get: { windowState?.viewMode ?? .editOnly },
-                set: { windowState?.viewMode = $0 }
+                get: { windowState?.activeViewMode ?? .editOnly },
+                set: { windowState?.activeViewMode = $0 }
             )) {
                 Text("Edit Only").tag(ViewMode.editOnly)
                 Text("Dual View").tag(ViewMode.split)
@@ -233,8 +235,8 @@ struct SahifaCommands: Commands {
             Button("Cycle View") {
                 if let windowState {
                     let modes = ViewMode.allCases
-                    let next = (modes.firstIndex(of: windowState.viewMode)! + 1) % modes.count
-                    windowState.viewMode = modes[next]
+                    let next = (modes.firstIndex(of: windowState.activeViewMode)! + 1) % modes.count
+                    windowState.activeViewMode = modes[next]
                 }
             }
             .keyboardShortcut("p", modifiers: [.command, .shift])
@@ -248,37 +250,42 @@ struct SahifaCommands: Commands {
             }
         }
         CommandMenu("Format") {
-            Button("Bold") { send(#selector(BidiTextView.sahifaToggleBold(_:))) }
-                .keyboardShortcut("b", modifiers: .command)
-            Button("Italic") { send(#selector(BidiTextView.sahifaToggleItalic(_:))) }
-                .keyboardShortcut("i", modifiers: .command)
-            Button("Strikethrough") { send(#selector(BidiTextView.sahifaToggleStrikethrough(_:))) }
-                .keyboardShortcut("x", modifiers: [.command, .shift])
-            Divider()
-            Button("Heading 1") { send(#selector(BidiTextView.sahifaHeading1(_:))) }
-                .keyboardShortcut("1", modifiers: .command)
-            Button("Heading 2") { send(#selector(BidiTextView.sahifaHeading2(_:))) }
-                .keyboardShortcut("2", modifiers: .command)
-            Button("Heading 3") { send(#selector(BidiTextView.sahifaHeading3(_:))) }
-                .keyboardShortcut("3", modifiers: .command)
-            Button("Heading 4") { send(#selector(BidiTextView.sahifaHeading4(_:))) }
-                .keyboardShortcut("4", modifiers: .command)
-            Divider()
-            Button("Bulleted List") { send(#selector(BidiTextView.sahifaToggleBulletList(_:))) }
-                .keyboardShortcut("8", modifiers: [.command, .shift])
-            Button("Numbered List") { send(#selector(BidiTextView.sahifaToggleNumberedList(_:))) }
-                .keyboardShortcut("7", modifiers: [.command, .shift])
-            Button("Quote") { send(#selector(BidiTextView.sahifaToggleQuote(_:))) }
-            Divider()
-            Button("Inline Code") { send(#selector(BidiTextView.sahifaToggleInlineCode(_:))) }
-                .keyboardShortcut("e", modifiers: .command)
-            Button("Code Block") { send(#selector(BidiTextView.sahifaInsertCodeBlock(_:))) }
-            Divider()
-            Button("Link") { send(#selector(BidiTextView.sahifaInsertLink(_:))) }
-                .keyboardShortcut("k", modifiers: .command)
-            Button("Image") { send(#selector(BidiTextView.sahifaInsertImage(_:))) }
-            Button("Horizontal Rule") { send(#selector(BidiTextView.sahifaInsertHorizontalRule(_:))) }
-            Button("Table") { send(#selector(BidiTextView.sahifaInsertTable(_:))) }
+            // Every item is a Markdown edit. In a CSV file it would only put
+            // markup into the data, so the whole menu is off there.
+            Group {
+                Button("Bold") { send(#selector(BidiTextView.sahifaToggleBold(_:))) }
+                    .keyboardShortcut("b", modifiers: .command)
+                Button("Italic") { send(#selector(BidiTextView.sahifaToggleItalic(_:))) }
+                    .keyboardShortcut("i", modifiers: .command)
+                Button("Strikethrough") { send(#selector(BidiTextView.sahifaToggleStrikethrough(_:))) }
+                    .keyboardShortcut("x", modifiers: [.command, .shift])
+                Divider()
+                Button("Heading 1") { send(#selector(BidiTextView.sahifaHeading1(_:))) }
+                    .keyboardShortcut("1", modifiers: .command)
+                Button("Heading 2") { send(#selector(BidiTextView.sahifaHeading2(_:))) }
+                    .keyboardShortcut("2", modifiers: .command)
+                Button("Heading 3") { send(#selector(BidiTextView.sahifaHeading3(_:))) }
+                    .keyboardShortcut("3", modifiers: .command)
+                Button("Heading 4") { send(#selector(BidiTextView.sahifaHeading4(_:))) }
+                    .keyboardShortcut("4", modifiers: .command)
+                Divider()
+                Button("Bulleted List") { send(#selector(BidiTextView.sahifaToggleBulletList(_:))) }
+                    .keyboardShortcut("8", modifiers: [.command, .shift])
+                Button("Numbered List") { send(#selector(BidiTextView.sahifaToggleNumberedList(_:))) }
+                    .keyboardShortcut("7", modifiers: [.command, .shift])
+                Button("Quote") { send(#selector(BidiTextView.sahifaToggleQuote(_:))) }
+                Divider()
+                Button("Inline Code") { send(#selector(BidiTextView.sahifaToggleInlineCode(_:))) }
+                    .keyboardShortcut("e", modifiers: .command)
+                Button("Code Block") { send(#selector(BidiTextView.sahifaInsertCodeBlock(_:))) }
+                Divider()
+                Button("Link") { send(#selector(BidiTextView.sahifaInsertLink(_:))) }
+                    .keyboardShortcut("k", modifiers: .command)
+                Button("Image") { send(#selector(BidiTextView.sahifaInsertImage(_:))) }
+                Button("Horizontal Rule") { send(#selector(BidiTextView.sahifaInsertHorizontalRule(_:))) }
+                Button("Table") { send(#selector(BidiTextView.sahifaInsertTable(_:))) }
+            }
+            .disabled(windowState?.document?.kind.isTable == true)
         }
     }
 }

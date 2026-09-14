@@ -17,13 +17,13 @@ final class Exporter: NSObject {
 
     // MARK: Panels
 
-    func exportHTML(markdown: String, suggestedName: String) {
+    func exportHTML(text: String, kind: DocumentKind, suggestedName: String) {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.html]
         panel.nameFieldStringValue = suggestedName + ".html"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
-            try writeHTML(markdown: markdown, title: suggestedName, to: url)
+            try writeHTML(text: text, kind: kind, title: suggestedName, to: url)
         } catch {
             presentError(error)
         }
@@ -41,8 +41,8 @@ final class Exporter: NSObject {
 
     // MARK: Panel-free primitives (also used by the CLI dev flags)
 
-    func writeHTML(markdown: String, title: String, to url: URL) throws {
-        let html = MarkdownHTMLRenderer.standalone(title: title, markdown: markdown)
+    func writeHTML(text: String, kind: DocumentKind, title: String, to url: URL) throws {
+        let html = DocumentHTML.standalone(title: title, text: text, kind: kind)
         try html.write(to: url, atomically: true, encoding: .utf8)
     }
 
@@ -74,7 +74,7 @@ final class Exporter: NSObject {
         }
         if let path = value(after: "-exportHTML") {
             guard let markdown else { NSApp.terminate(nil); return }
-            try? writeHTML(markdown: markdown, title: title, to: URL(fileURLWithPath: path))
+            try? writeHTML(text: markdown, kind: .markdown, title: title, to: URL(fileURLWithPath: path))
             NSApp.terminate(nil)
         } else if let path = value(after: "-exportPDF") {
             guard let markdown else { NSApp.terminate(nil); return }

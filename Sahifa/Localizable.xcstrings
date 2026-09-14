@@ -1138,6 +1138,60 @@
         }
       }
     },
+    "Rows: %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الصفوف: %lld"
+          }
+        }
+      }
+    },
+    "Columns: %lld": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الأعمدة: %lld"
+          }
+        }
+      }
+    },
+    "Showing the first %lld of %lld rows.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الصفوف المعروضة: أول %1$lld من %2$lld."
+          }
+        }
+      }
+    },
+    "Line %lld opens a quote that is never closed, so everything after it is in one cell.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "في السطر %lld علامة اقتباس لا تُغلق، لذا صار كل ما بعدها في خلية واحدة."
+          }
+        }
+      }
+    },
+    "This file has no rows yet.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لا صفوف في هذا الملف بعد."
+          }
+        }
+      }
+    },
     "Cycle View": {
       "localizations": {
         "ar": {

@@ -63,8 +63,30 @@ func run() {
     expect("previewOnly hides editor", !ViewMode.previewOnly.showsEditor)
     expect("previewOnly shows preview", ViewMode.previewOnly.showsPreview)
 
+    // Tables keep a layout of their own, starting on the table.
+    d.removeObject(forKey: "tableViewMode")
+    check("tables default to View Only", WindowState().tableViewMode, .previewOnly)
+    let tables = WindowState()
+    tables.tableViewMode = .split
+    check("the table layout persists", WindowState().tableViewMode, .split)
+    check("…without touching the Markdown one", WindowState().viewMode, .previewOnly)
+    d.set("nonsense", forKey: "tableViewMode")
+    check("a garbage table layout falls back to View Only", WindowState().tableViewMode, .previewOnly)
+    check("with nothing open, the active layout is Markdown's", WindowState().activeViewMode, .previewOnly)
+
+    // Which files are tables.
+    expect("a .md file is Markdown", DocumentKind(fileName: "notes.md") == .markdown)
+    expect("a .CSV file is delimited, whatever the case",
+           DocumentKind(fileName: "بيانات.CSV") == .delimited)
+    expect("a .tsv file is tab-separated", DocumentKind(fileName: "data.tsv") == .tabSeparated)
+    expect("a .txt file isn't opened", DocumentKind(fileName: "notes.txt") == nil)
+    expect("CSV and TSV are tables, Markdown isn't",
+           DocumentKind.delimited.isTable && DocumentKind.tabSeparated.isTable
+               && !DocumentKind.markdown.isTable)
+
     // Clean up so the test never leaves state behind.
     d.removeObject(forKey: "viewMode")
+    d.removeObject(forKey: "tableViewMode")
     d.removeObject(forKey: "showPreview")
 
     if failures == 0 {

@@ -112,6 +112,34 @@ func rendering() {
     check("an empty file renders nothing", html("").isEmpty)
 }
 
+// MARK: The preview page
+
+func preview() {
+    // Only the English wording is checked, not the numbers in it: those are
+    // formatted for the machine's locale.
+    let empty = TablePreview.body(from: "", kind: .delimited)
+    check("an empty file says it has no rows", empty.contains("This file has no rows yet."), empty)
+
+    let open = TablePreview.body(from: "a,b\nc,\"d\ne", kind: .delimited)
+    check("an unclosed quote is reported above the table",
+          open.hasPrefix("<p class=\"sahifa-table-note warning\" dir=\"ltr\">Line ")
+            && open.contains("opens a quote that is never closed"), open)
+
+    let long = TablePreview.body(from: "h\n1\n2\n3", kind: .delimited, rowLimit: 2)
+    check("rows left out are noted below the table",
+          long.contains("</table></div>\n<p class=\"sahifa-table-note\" dir=\"ltr\">Showing the first "), long)
+    check("a file within the limit says nothing extra",
+          !TablePreview.body(from: "h\n1\n2", kind: .delimited, rowLimit: 2).contains("sahifa-table-note"))
+    check("…and the header doesn't count towards the limit",
+          !TablePreview.body(from: "h\n1\n2", kind: .delimited, rowLimit: 2).contains("Showing"))
+
+    check("a .tsv file splits on tabs even where commas look likelier",
+          TablePreview.body(from: "a,b,c\td\n1,2,3\t4", kind: .tabSeparated)
+            .contains("<th dir=\"ltr\">a,b,c</th><th dir=\"ltr\">d</th>"))
+    check("a .csv file detects its delimiter",
+          TablePreview.body(from: "a;b\n1;2", kind: .delimited).contains("<th dir=\"ltr\">a</th><th dir=\"ltr\">b</th>"))
+}
+
 // MARK: Size
 
 func size() {
@@ -135,6 +163,7 @@ func size() {
 parsing()
 detection()
 rendering()
+preview()
 size()
 if checksRun == 0 {
     print("\nNOTHING RAN")

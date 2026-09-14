@@ -125,21 +125,20 @@ final class AppModel: ObservableObject {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = true
-        panel.allowedContentTypes = Self.markdownTypes
+        panel.allowedContentTypes = Self.openableTypes
         guard panel.runModal() == .OK else { return }
         openExternal(panel.urls)
     }
 
-    /// Derived from `MarkdownFile.extensions` rather than listed again, so the
-    /// Open panel can never fall behind the extensions the tree recognises —
-    /// which is exactly how .mdx came to be browsable but greyed out in ⌘O.
-    private static let markdownTypes: [UTType] =
-        MarkdownFile.extensions.compactMap { UTType(filenameExtension: $0) }
+    /// Derived from `DocumentKind.openableExtensions` rather than listed
+    /// again, so the Open panel can never fall behind the extensions the tree
+    /// recognises — which is exactly how .mdx came to be browsable but greyed
+    /// out in ⌘O.
+    private static let openableTypes: [UTType] =
+        DocumentKind.openableExtensions.compactMap { UTType(filenameExtension: $0) }
 
-    static let markdownExtensions = MarkdownFile.extensions
-
-    static func isMarkdown(_ url: URL) -> Bool {
-        MarkdownFile.matches(url.lastPathComponent)
+    static func isOpenable(_ url: URL) -> Bool {
+        DocumentKind(fileName: url.lastPathComponent) != nil
     }
 
     static func isDirectory(_ url: URL) -> Bool {
@@ -155,7 +154,7 @@ final class AppModel: ObservableObject {
         for url in urls {
             if Self.isDirectory(url) {
                 addFolderSource(url)
-            } else if Self.isMarkdown(url), let id = adoptFile(url) {
+            } else if Self.isOpenable(url), let id = adoptFile(url) {
                 opened.append(id)
             }
         }

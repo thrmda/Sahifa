@@ -127,16 +127,45 @@ struct Source: Identifiable, Hashable {
     }
 }
 
-/// What counts as an openable Markdown file. Lives here rather than on
-/// AppModel so a store can decide what to list without reaching for app state.
-/// Matches the extensions declared in `UTImportedTypeDeclarations`; keep the
+/// What kind of document a file is, decided by its extension. Lives here
+/// rather than on AppModel so a store can decide what to list without reaching
+/// for app state. Matches the types declared in `Sahifa-Info.plist`; keep the
 /// two in step.
-enum MarkdownFile {
-    static let extensions = ["md", "markdown", "mdown", "mkd", "mkdn", "mdx"]
+enum DocumentKind: Equatable, Sendable {
+    case markdown
+    /// CSV. The delimiter is detected from the text rather than assumed: a
+    /// `.csv` exported where decimals are written with a comma is
+    /// semicolon-separated.
+    case delimited
+    /// Tab-separated, whatever it contains.
+    case tabSeparated
 
-    static func matches(_ name: String) -> Bool {
-        extensions.contains((name as NSString).pathExtension.lowercased())
+    static let markdownExtensions = ["md", "markdown", "mdown", "mkd", "mkdn", "mdx"]
+    static let delimitedExtensions = ["csv"]
+    static let tabSeparatedExtensions = ["tsv", "tab"]
+    /// Everything the sidebar lists and the Open panel accepts.
+    static let openableExtensions = markdownExtensions + delimitedExtensions + tabSeparatedExtensions
+
+    /// nil for a file Sahifa doesn't open.
+    init?(fileName: String) {
+        let pathExtension = (fileName as NSString).pathExtension.lowercased()
+        if Self.markdownExtensions.contains(pathExtension) {
+            self = .markdown
+        } else if Self.delimitedExtensions.contains(pathExtension) {
+            self = .delimited
+        } else if Self.tabSeparatedExtensions.contains(pathExtension) {
+            self = .tabSeparated
+        } else {
+            return nil
+        }
     }
+
+    /// Shown as a table rather than rendered as Markdown.
+    var isTable: Bool { self != .markdown }
+}
+
+extension DocumentID {
+    var kind: DocumentKind? { DocumentKind(fileName: name) }
 }
 
 /// One row in the sidebar tree.

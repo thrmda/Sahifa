@@ -49,6 +49,25 @@ final class WindowState: ObservableObject {
     @Published var viewMode: ViewMode {
         didSet { UserDefaults.standard.set(viewMode.rawValue, forKey: "viewMode") }
     }
+    /// The same, for CSV and TSV files. Kept apart so moving between a
+    /// Markdown tab and a table tab doesn't keep flipping each other's layout,
+    /// and it starts on the table rather than the raw text.
+    @Published var tableViewMode: ViewMode {
+        didSet { UserDefaults.standard.set(tableViewMode.rawValue, forKey: "tableViewMode") }
+    }
+
+    /// The layout for whatever this window is showing — what the status bar,
+    /// the View menu and ⇧⌘P read and change.
+    var activeViewMode: ViewMode {
+        get { document?.kind.isTable == true ? tableViewMode : viewMode }
+        set {
+            if document?.kind.isTable == true {
+                tableViewMode = newValue
+            } else {
+                viewMode = newValue
+            }
+        }
+    }
     /// Files open as tabs in THIS window, in the order they were opened; the
     /// active tab is `selection`. These are lightweight in-window tabs (one
     /// shared sidebar, instant switching, no new windows) — distinct from the
@@ -68,6 +87,8 @@ final class WindowState: ObservableObject {
         } else {
             viewMode = UserDefaults.standard.bool(forKey: "showPreview") ? .split : .editOnly
         }
+        tableViewMode = UserDefaults.standard.string(forKey: "tableViewMode")
+            .flatMap(ViewMode.init(rawValue:)) ?? .previewOnly
     }
 
     func attach(_ model: AppModel) {
