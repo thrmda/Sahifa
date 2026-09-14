@@ -140,6 +140,40 @@ func preview() {
           TablePreview.body(from: "a;b\n1;2", kind: .delimited).contains("<th dir=\"ltr\">a</th><th dir=\"ltr\">b</th>"))
 }
 
+// MARK: Markdown tables
+
+func markdownTables() {
+    check("rows become a GFM table",
+          MarkdownTable.markdown(from: [["a", "b"], ["1", "2"]]) == "| a | b |\n| --- | --- |\n| 1 | 2 |")
+    check("short rows are padded and cells trimmed",
+          MarkdownTable.markdown(from: [["a", "b", "c"], [" 1 "]]) == "| a | b | c |\n| --- | --- | --- |\n| 1 |  |  |")
+    check("a pipe in a cell is escaped", MarkdownTable.markdown(from: [["a|b"]]) == "| a\\|b |\n| --- |")
+    check("a line break in a cell becomes <br>",
+          MarkdownTable.markdown(from: [["h"], ["one\r\ntwo"]]).hasSuffix("| one<br>two |"))
+    check("Markdown in a cell is left as it is",
+          MarkdownTable.markdown(from: [["**b**"]]).hasPrefix("| **b** |"))
+    check("no rows, no table", MarkdownTable.markdown(from: []).isEmpty)
+
+    check("source rows come back without the delimiter row",
+          MarkdownTable.rows(fromSource: "| a | b |\n|:--|--:|\n| 1 | 2 |") == [["a", "b"], ["1", "2"]])
+    check("outer pipes are optional",
+          MarkdownTable.rows(fromSource: "a | b\n--- | ---\n1 | 2") == [["a", "b"], ["1", "2"]])
+    check("escaped pipes and <br> come back",
+          MarkdownTable.rows(fromSource: "| x |\n| --- |\n| a \\| b<br>c |") == [["x"], ["a | b\nc"]])
+    check("empty cells survive",
+          MarkdownTable.rows(fromSource: "| a | | c |\n| - | - | - |") == [["a", "", "c"]])
+
+    let original = [["الاسم", "note"], ["محمد", "a|b, \"q\"\nline"], ["", ""]]
+    let throughMarkdown = MarkdownTable.rows(fromSource: MarkdownTable.markdown(from: original))
+    check("rows survive a round trip through Markdown", throughMarkdown == original, "\(throughMarkdown)")
+    check("CSV quotes only the fields that need it",
+          MarkdownTable.csv(from: [["a", "b,c"], ["say \"hi\"", "x\ny"]]) == "a,\"b,c\"\n\"say \"\"hi\"\"\",\"x\ny\"\n")
+    let throughCSV = DelimitedText(parsing: MarkdownTable.csv(from: original), delimiter: .comma).rows
+    check("…and parses back to the same rows", throughCSV == original, "\(throughCSV)")
+    check("blockquote markers are stripped from quoted table lines",
+          MarkdownTable.strippingQuoteMarkers("> | a |\n>| b |") == "| a |\n| b |")
+}
+
 // MARK: Size
 
 func size() {
@@ -164,6 +198,7 @@ parsing()
 detection()
 rendering()
 preview()
+markdownTables()
 size()
 if checksRun == 0 {
     print("\nNOTHING RAN")

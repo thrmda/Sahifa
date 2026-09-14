@@ -22,6 +22,7 @@ swiftc -O \
   Sahifa/Export/HTMLEscaping.swift \
   Sahifa/Tabular/DelimitedText.swift \
   Sahifa/Tabular/TableHTMLRenderer.swift \
+  Sahifa/Tabular/MarkdownTable.swift \
   Sahifa/Tabular/TablePreview.swift \
   Tests/Tabular/main.swift \
   -o "$BUILD/tabular"

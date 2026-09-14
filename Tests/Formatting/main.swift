@@ -145,6 +145,62 @@ func run() {
         check("one undo removes an inserted table", e.string == "x", e.string)
     }
 
+    // MARK: Tables from and to delimited text
+    //
+    // Private pasteboards throughout, so running the suite never touches the
+    // user's clipboard.
+
+    do {
+        let board = NSPasteboard(name: NSPasteboard.Name("sahifa-test-paste-\(getpid())"))
+        board.clearContents()
+        board.setString("name\tcity\nمحمد\tالرياض\n", forType: .string)
+        let e = makeEditor("Intro", select: NSRange(location: 5, length: 0))
+        e.pasteTable(from: board)
+        check("pasted cells become a table, set apart by a blank line",
+              e.string == "Intro\n\n| name | city |\n| --- | --- |\n| محمد | الرياض |\n",
+              e.string.debugDescription)
+        check("…with the caret just after it",
+              e.selectedRange().location == (e.string as NSString).length - 1, "\(e.selectedRange())")
+        e.undoManager?.undo()
+        check("one undo removes a pasted table", e.string == "Intro", e.string)
+        board.releaseGlobally()
+    }
+
+    do {
+        let text = "before\n\na,b\n1,2\n\nafter"
+        let e = makeEditor(text, select: (text as NSString).range(of: "a,b\n1,2"))
+        e.sahifaConvertSelectionToTable(nil)
+        check("a CSV selection converts in place without extra blank lines",
+              e.string == "before\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\nafter", e.string.debugDescription)
+    }
+
+    do {
+        let e = makeEditor("just words", select: NSRange(location: 0, length: 10))
+        e.sahifaConvertSelectionToTable(nil)
+        check("a selection without columns is left alone", e.string == "just words", e.string)
+    }
+
+    do {
+        let text = "Intro\n\n| name | note |\n| :--- | ---: |\n| Ali | says \"hi\", twice |\n| سارة | a \\| b |\n\nOutro"
+        let caret = (text as NSString).range(of: "Ali").location
+        let e = makeEditor(text, select: NSRange(location: caret, length: 0))
+        let board = NSPasteboard(name: NSPasteboard.Name("sahifa-test-copy-\(getpid())"))
+        check("copying from inside a table succeeds", e.copyTableAsCSV(to: board))
+        let copied = board.string(forType: .string)
+        check("…as CSV, quoted only where needed",
+              copied == "name,note\nAli,\"says \"\"hi\"\", twice\"\nسارة,a | b\n",
+              copied?.debugDescription ?? "nil")
+        let outside = makeEditor(text, select: NSRange(location: 1, length: 0))
+        check("outside a table there's nothing to copy", !outside.copyTableAsCSV(to: board))
+        let quotedText = "> | a | b |\n> | --- | --- |\n> | 1 | 2 |\n"
+        let quoted = makeEditor(quotedText,
+                                select: NSRange(location: (quotedText as NSString).range(of: "1").location, length: 0))
+        check("a table in a blockquote copies without its markers",
+              quoted.copyTableAsCSV(to: board) && board.string(forType: .string) == "a,b\n1,2\n",
+              board.string(forType: .string)?.debugDescription ?? "nil")
+        board.releaseGlobally()
+    }
+
     // MARK: Script-aware emphasis
     //
     // Arabic has no italic face, so emphasis that mapped to Arabic-Regular

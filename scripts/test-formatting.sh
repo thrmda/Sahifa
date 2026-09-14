@@ -36,6 +36,8 @@ swiftc -O \
   Sahifa/Editor/FontLibrary.swift \
   Sahifa/Editor/MarkdownStyler.swift \
   Sahifa/Editor/FormattingCommands.swift \
+  Sahifa/Tabular/DelimitedText.swift \
+  Sahifa/Tabular/MarkdownTable.swift \
   Sahifa/Models/Source.swift \
   Sahifa/Models/DirectoryWatcher.swift \
   Sahifa/Models/DocumentStore.swift \

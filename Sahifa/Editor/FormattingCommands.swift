@@ -1,4 +1,5 @@
 import AppKit
+import Markdown
 
 /// Markdown formatting actions, reachable from the Format menu (and its
 /// keyboard shortcuts) via the responder chain — the menu sends these
@@ -66,6 +67,108 @@ extension BidiTextView {
         // Land with the first "Column" selected, ready to type over.
         replace(sel, with: table,
                 selecting: NSRange(location: sel.location + 4, length: 6))
+    }
+
+    // MARK: Tables from and to delimited text
+
+    /// Whatever's on the clipboard as a Markdown table. Cells copied from
+    /// Numbers or Excel arrive tab-separated; anything else has its delimiter
+    /// detected.
+    @objc func sahifaPasteAsTable(_ sender: Any?) {
+        pasteTable(from: .general)
+    }
+
+    /// The selected CSV or TSV text as a Markdown table. A selection that
+    /// doesn't split into at least two columns is left alone.
+    @objc func sahifaConvertSelectionToTable(_ sender: Any?) {
+        let selection = selectedRange()
+        let rows = DelimitedText(parsing: (string as NSString).substring(with: selection)).rows
+        guard selection.length > 0, (rows.map(\.count).max() ?? 0) >= 2 else {
+            NSSound.beep()
+            return
+        }
+        insertBlock(MarkdownTable.markdown(from: rows), replacing: selection)
+    }
+
+    /// The Markdown table the caret is in, as CSV on the clipboard.
+    @objc func sahifaCopyTableAsCSV(_ sender: Any?) {
+        copyTableAsCSV(to: .general)
+    }
+
+    /// Takes the pasteboard so tests can use a private one rather than the
+    /// user's clipboard.
+    func pasteTable(from pasteboard: NSPasteboard) {
+        let tabSeparated = pasteboard.string(forType: .init("public.utf8-tab-separated-values-text"))
+        guard let text = tabSeparated ?? pasteboard.string(forType: .string) else {
+            NSSound.beep()
+            return
+        }
+        let rows = DelimitedText(parsing: text, delimiter: tabSeparated != nil ? .tab : nil).rows
+        guard !rows.isEmpty else {
+            NSSound.beep()
+            return
+        }
+        insertBlock(MarkdownTable.markdown(from: rows), replacing: selectedRange())
+    }
+
+    @discardableResult
+    func copyTableAsCSV(to pasteboard: NSPasteboard) -> Bool {
+        guard let source = markdownTableSource(at: selectedRange().location) else {
+            NSSound.beep()
+            return false
+        }
+        pasteboard.clearContents()
+        pasteboard.setString(MarkdownTable.csv(from: MarkdownTable.rows(fromSource: source)),
+                             forType: .string)
+        return true
+    }
+
+    /// The source lines of the Markdown table containing `location`. Found
+    /// with swift-markdown, so what counts as a table is exactly what the
+    /// preview renders as one.
+    private func markdownTableSource(at location: Int) -> String? {
+        let text = string
+        let ns = text as NSString
+        let map = SourceMap(text: text)
+        func search(_ markup: Markup, quoted: Bool) -> String? {
+            if let table = markup as? Markdown.Table {
+                guard let sourceRange = table.range, let range = map.nsRange(sourceRange),
+                      location >= range.location, location <= NSMaxRange(range),
+                      NSMaxRange(range) <= ns.length
+                else { return nil }
+                let lines = ns.substring(with: ns.lineRange(for: range))
+                return quoted ? MarkdownTable.strippingQuoteMarkers(lines) : lines
+            }
+            for child in markup.children {
+                if let found = search(child, quoted: quoted || markup is BlockQuote) { return found }
+            }
+            return nil
+        }
+        return search(Document(parsing: text), quoted: false)
+    }
+
+    /// Replaces `range` with a block, adding only the line breaks needed to
+    /// set it apart by a blank line, and leaves the caret just after it.
+    private func insertBlock(_ block: String, replacing range: NSRange) {
+        let ns = string as NSString
+        let lineFeed: unichar = 10
+        var before = 0
+        while before < 2, range.location - before > 0,
+              ns.character(at: range.location - before - 1) == lineFeed {
+            before += 1
+        }
+        var after = 0
+        while after < 2, NSMaxRange(range) + after < ns.length,
+              ns.character(at: NSMaxRange(range) + after) == lineFeed {
+            after += 1
+        }
+        let atStart = range.location == 0
+        let atEnd = NSMaxRange(range) == ns.length
+        let prefix = atStart ? "" : String(repeating: "\n", count: 2 - before)
+        // The end of the document only needs the line to end.
+        let suffix = String(repeating: "\n", count: max(0, (atEnd ? 1 : 2) - after))
+        let caret = range.location + (prefix as NSString).length + (block as NSString).length
+        replace(range, with: prefix + block + suffix, selecting: NSRange(location: caret, length: 0))
     }
 
     /// `[selection](url)` / `![selection](url)` with "url" selected so the

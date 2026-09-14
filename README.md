@@ -32,7 +32,8 @@ on disk.
   italic, strikethrough, headings, lists, quote, inline code, code block,
   link, image, rule and table — with shortcuts for the common ones (⌘B, ⌘I,
   ⌘1–4, ⇧⌘7/⇧⌘8, ⌘E, ⌘K), plus an optional icon toolbar over the editor for
-  the no-shortcut path.
+  the no-shortcut path. Paste cells from Numbers or Excel as a Markdown table,
+  turn a selection of CSV into one, or copy a table back out as CSV.
 - **Focus mode** dims everything but the paragraph you're writing (⇧⌘F).
 - **Document tabs inside the window.** ⌘T opens a blank tab; clicking a file
   in the sidebar reuses the current one, so browsing doesn't pile tabs up.
@@ -73,7 +74,8 @@ on disk.
   saved as the text you typed, never rewritten from the table. An Arabic
   file puts its first column on the right, and each cell reads in its own
   direction. The delimiter is detected, so a semicolon-separated export
-  opens correctly too. Tables export to HTML.
+  opens correctly too. Tables export to HTML, and Format ▸ Copy as Markdown
+  Table puts the whole file on the clipboard ready for a document.
 - **Plain text files** in a folder you choose — Markdown (`.md`, `.markdown`,
   `.mdown`, `.mkd`, `.mkdn`, `.mdx`) and CSV/TSV. A file keeps the encoding
   it was saved in, byte-order mark included; one that isn't UTF-8 or UTF-16
