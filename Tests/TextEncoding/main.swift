@@ -179,7 +179,63 @@ func documents() async {
         check("…and isn't overwritten", onDisk(url) == windows1256, hex(onDisk(url)))
     }
 
-    // 8. A document that doesn't exist yet is still writable, as UTF-8.
+    // 8. An Arabic Excel export, reopened as Windows-1256 and then converted.
+    do {
+        let url = makeFile("excel-export.csv", windows1256)
+        let doc = makeDocument(url)
+        check("an undecodable file offers Windows-1256", doc.canReopenAsWindows1256)
+        doc.reopenAsWindows1256()
+        check("reopened, it reads as Arabic", doc.text == "محمد,1", doc.text)
+        check("…is still read-only", doc.isReadOnly && doc.isShownAsWindows1256)
+        check("…and offers conversion", doc.canConvertToUTF8)
+        doc.saveNow()
+        await doc.flush()
+        check("reopening writes nothing", onDisk(url) == windows1256, hex(onDisk(url)))
+
+        doc.convertToUTF8()
+        await doc.waitForSave()
+        check("converting a CSV writes UTF-8 with a BOM, for Excel",
+              onDisk(url) == bom + Array("محمد,1".utf8), hex(onDisk(url)))
+        check("…after which it edits normally", !doc.isReadOnly && !doc.canConvertToUTF8)
+        doc.text = "محمد,2"
+        await doc.flush()
+        check("…and saves in its new encoding",
+              onDisk(url) == bom + Array("محمد,2".utf8), hex(onDisk(url)))
+    }
+
+    do {
+        let url = makeFile("legacy.md", windows1256)
+        let doc = makeDocument(url)
+        doc.reopenAsWindows1256()
+        doc.convertToUTF8()
+        await doc.waitForSave()
+        check("converting Markdown writes UTF-8 without a BOM",
+              onDisk(url) == Array("محمد,1".utf8), hex(onDisk(url)))
+    }
+
+    do {
+        let url = makeFile("reopened-then-changed.csv", windows1256)
+        let doc = makeDocument(url)
+        doc.reopenAsWindows1256()
+        try! Data([0xE3, 0xCD, 0xE3, 0xCF, 0x2C, 0x32, 0x33]).write(to: url)
+        doc.reconcileWithDisk()
+        check("a reopened file that changes on disk starts over as undecodable",
+              doc.isUndecodable && !doc.isShownAsWindows1256 && doc.canReopenAsWindows1256)
+    }
+
+    do {
+        let url = makeFile("valid.csv", Array("a,b\n".utf8))
+        let doc = makeDocument(url)
+        check("a readable file offers no reopening or conversion",
+              !doc.canReopenAsWindows1256 && !doc.canConvertToUTF8)
+        doc.reopenAsWindows1256()
+        check("…and asking anyway changes nothing", doc.text == "a,b\n" && !doc.isReadOnly)
+    }
+
+    check("Windows-1256 decodes when asked for",
+          TextEncoding.decodeWindows1256(Data(windows1256)) == "محمد,1")
+
+    // 9. A document that doesn't exist yet is still writable, as UTF-8.
     do {
         let id = testSource.documentID(for: dir.appendingPathComponent("new.md"))!
         let contents = testStore.readImmediately(id)

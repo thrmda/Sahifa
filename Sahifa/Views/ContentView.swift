@@ -410,21 +410,40 @@ private struct SaveFailedBanner: View {
 /// Says plainly that edits won't be saved, rather than letting someone type
 /// into a document that silently discards their work.
 private struct ReadOnlyBanner: View {
-    /// This one file can't be written back faithfully, as opposed to the
-    /// whole source being unwritable.
-    let isUndecodable: Bool
+    @ObservedObject var document: DocumentModel
+    @State private var confirmingConversion = false
 
     var body: some View {
         HStack(spacing: Space.s) {
             Image(systemName: "eye")
                 .foregroundStyle(Color.slate)
                 .accessibilityHidden(true)
-            if isUndecodable {
+            // One file that can't be written back faithfully, as opposed to
+            // the whole source being unwritable. The way out is two explicit
+            // steps: see the text as Windows-1256, then convert the file.
+            if document.isShownAsWindows1256 {
+                Text("Shown as Arabic (Windows-1256), read-only. Convert it to UTF-8 to edit.")
+                Spacer(minLength: 0)
+                if document.canConvertToUTF8 {
+                    Button("Convert to UTF-8") { confirmingConversion = true }
+                }
+            } else if document.isUndecodable {
                 Text("This file isn't UTF-8 or UTF-16 text, so it opened read-only to keep it intact.")
+                Spacer(minLength: 0)
+                if document.canReopenAsWindows1256 {
+                    Button("Reopen as Arabic (Windows-1256)") { document.reopenAsWindows1256() }
+                }
             } else {
                 Text("Read-only. Saving to this source isn't supported yet.")
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
+        }
+        .confirmationDialog(
+            Text("Convert this file to UTF-8? Programs that expect Windows-1256 may not read it correctly afterwards."),
+            isPresented: $confirmingConversion
+        ) {
+            Button("Convert to UTF-8") { document.convertToUTF8() }
+            Button("Cancel", role: .cancel) {}
         }
         .font(.custom("IBMPlexSans", size: 12))
         .foregroundStyle(Color.slate)
@@ -533,7 +552,7 @@ struct DocumentEditorView: View {
                 Divider()
             }
             if document.isReadOnly, document.loadState == .ready {
-                ReadOnlyBanner(isUndecodable: document.isUndecodable)
+                ReadOnlyBanner(document: document)
                 Divider()
             }
             if !document.hasConflict,

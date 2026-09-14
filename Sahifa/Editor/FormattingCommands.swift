@@ -151,24 +151,49 @@ extension BidiTextView {
     /// set it apart by a blank line, and leaves the caret just after it.
     private func insertBlock(_ block: String, replacing range: NSRange) {
         let ns = string as NSString
-        let lineFeed: unichar = 10
-        var before = 0
-        while before < 2, range.location - before > 0,
-              ns.character(at: range.location - before - 1) == lineFeed {
-            before += 1
-        }
-        var after = 0
-        while after < 2, NSMaxRange(range) + after < ns.length,
-              ns.character(at: NSMaxRange(range) + after) == lineFeed {
-            after += 1
-        }
+        // In the document's own line endings, so a CRLF file doesn't come out
+        // with a mix.
+        let lineBreak = ns.range(of: "\r\n").location != NSNotFound ? "\r\n" : "\n"
         let atStart = range.location == 0
         let atEnd = NSMaxRange(range) == ns.length
-        let prefix = atStart ? "" : String(repeating: "\n", count: 2 - before)
+        let before = atStart ? 2 : lineBreaks(in: ns, endingAt: range.location)
+        let after = lineBreaks(in: ns, startingAt: NSMaxRange(range))
+        let prefix = String(repeating: lineBreak, count: max(0, 2 - before))
         // The end of the document only needs the line to end.
-        let suffix = String(repeating: "\n", count: max(0, (atEnd ? 1 : 2) - after))
-        let caret = range.location + (prefix as NSString).length + (block as NSString).length
-        replace(range, with: prefix + block + suffix, selecting: NSRange(location: caret, length: 0))
+        let suffix = String(repeating: lineBreak, count: max(0, (atEnd ? 1 : 2) - after))
+        let body = block.replacingOccurrences(of: "\n", with: lineBreak)
+        let caret = range.location + ((prefix + body) as NSString).length
+        replace(range, with: prefix + body + suffix, selecting: NSRange(location: caret, length: 0))
+    }
+
+    /// Line breaks directly before `end`, up to two. CRLF counts once.
+    private func lineBreaks(in ns: NSString, endingAt end: Int) -> Int {
+        var count = 0
+        var index = end
+        while count < 2, index > 0 {
+            switch ns.character(at: index - 1) {
+            case 10: index -= index >= 2 && ns.character(at: index - 2) == 13 ? 2 : 1
+            case 13: index -= 1
+            default: return count
+            }
+            count += 1
+        }
+        return count
+    }
+
+    /// Line breaks directly from `start`, up to two. CRLF counts once.
+    private func lineBreaks(in ns: NSString, startingAt start: Int) -> Int {
+        var count = 0
+        var index = start
+        while count < 2, index < ns.length {
+            switch ns.character(at: index) {
+            case 13: index += index + 1 < ns.length && ns.character(at: index + 1) == 10 ? 2 : 1
+            case 10: index += 1
+            default: return count
+            }
+            count += 1
+        }
+        return count
     }
 
     /// `[selection](url)` / `![selection](url)` with "url" selected so the

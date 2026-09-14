@@ -19,18 +19,28 @@ struct DocumentContents: Sendable {
     /// rendering for display, and saving it would destroy every character it
     /// couldn't read.
     let encoding: TextEncoding?
+    /// The stored bytes, kept only when they couldn't be decoded, so the
+    /// document can be reopened in an encoding the user names without reading
+    /// it again. nil for a file that couldn't be read at all.
+    let undecodedData: Data?
 
     init(text: String, version: VersionToken?, encoding: TextEncoding? = .utf8) {
         self.text = text
         self.version = version
         self.encoding = encoding
+        self.undecodedData = nil
     }
 
     init(data: Data, version: VersionToken?) {
+        self.version = version
         if let decoded = TextEncoding.decode(data) {
-            self.init(text: decoded.text, version: version, encoding: decoded.encoding)
+            self.text = decoded.text
+            self.encoding = decoded.encoding
+            self.undecodedData = nil
         } else {
-            self.init(text: String(decoding: data, as: UTF8.self), version: version, encoding: nil)
+            self.text = String(decoding: data, as: UTF8.self)
+            self.encoding = nil
+            self.undecodedData = data
         }
     }
 }
@@ -81,6 +91,15 @@ enum TextEncoding: Hashable, Sendable {
         case .utf16BigEndian:
             return Data([0xFE, 0xFF] + text.utf16.flatMap { [UInt8($0 >> 8), UInt8($0 & 0xFF)] })
         }
+    }
+
+    /// Arabic (Windows-1256): what Excel on an Arabic Windows machine writes
+    /// for a plain "CSV". Never guessed — only tried when someone asks for it,
+    /// since almost any bytes decode as something in a single-byte encoding.
+    static func decodeWindows1256(_ data: Data) -> String? {
+        let arabic = CFStringConvertEncodingToNSStringEncoding(
+            CFStringEncoding(CFStringEncodings.windowsArabic.rawValue))
+        return String(data: data, encoding: String.Encoding(rawValue: arabic))
     }
 
     /// Decoding replaces anything invalid with U+FFFD, so the bytes were valid

@@ -1222,6 +1222,46 @@
         }
       }
     },
+    "Reopen as Arabic (Windows-1256)": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إعادة الفتح بترميز عربي (Windows-1256)"
+          }
+        }
+      }
+    },
+    "Shown as Arabic (Windows-1256), read-only. Convert it to UTF-8 to edit.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "معروض بترميز عربي (Windows-1256) للقراءة فقط. حوّله إلى UTF-8 لتتمكن من تحريره."
+          }
+        }
+      }
+    },
+    "Convert to UTF-8": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تحويل إلى UTF-8"
+          }
+        }
+      }
+    },
+    "Convert this file to UTF-8? Programs that expect Windows-1256 may not read it correctly afterwards.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تحويل هذا الملف إلى UTF-8؟ قد لا تقرؤه البرامج التي تتوقع Windows-1256 بشكل صحيح بعد ذلك."
+          }
+        }
+      }
+    },
     "Copy as Markdown Table": {
       "localizations": {
         "ar": {
