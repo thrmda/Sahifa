@@ -19,6 +19,11 @@ enum MarkdownHTMLRenderer {
         page(title: title, bodyContent: body(from: markdown), script: "")
     }
 
+    /// The same page around a body rendered elsewhere — a CSV file's table.
+    static func standalone(title: String, body: String) -> String {
+        page(title: title, bodyContent: body, script: "")
+    }
+
     /// Empty page shell with a JS `sahifaRender` hook. The live preview loads
     /// this once and then swaps content in place, so the WebView keeps its
     /// scroll position across edits.
@@ -232,6 +237,19 @@ enum MarkdownHTMLRenderer {
     th, td { border: 1px solid var(--panel); padding: 0.35em 0.7em; }
     th { background: var(--panel); }
     del { color: var(--slate); }
+    /* CSV and TSV files. A table of data isn't prose, so the page drops the
+       reading measure, and a wide table scrolls the page sideways rather than
+       a box of its own, which would stop the header sticking to the top. An
+       RTL table narrower than the page sits against the right edge, where its
+       first column is. Figures line up on tabular numerals, and long cells
+       wrap instead of stretching a column across the screen. */
+    main:has(> .sahifa-table) { max-width: none; }
+    .sahifa-table table { margin: 0; font-variant-numeric: tabular-nums; }
+    .sahifa-table table[dir="rtl"] { margin-left: auto; }
+    .sahifa-table th { position: sticky; top: 0; }
+    .sahifa-table th, .sahifa-table td { max-width: 32rem; vertical-align: top; }
+    .sahifa-table-note { color: var(--slate); font-size: 0.85rem; margin: 0.5em 0; }
+    .sahifa-table-note.warning { color: var(--warning); }
     /* Print / PDF: paper is always light (a dark fill wastes ink and reads
        wrong), content uses the full page width, and blocks avoid ugly page
        splits. Declared last so it wins over the dark-scheme block when a

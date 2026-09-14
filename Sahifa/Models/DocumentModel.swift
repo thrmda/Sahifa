@@ -76,6 +76,10 @@ final class DocumentModel: ObservableObject, Identifiable {
 
     var displayName: String { id.name }
 
+    /// Markdown, or a table. Follows the name: renaming a file to `.csv`
+    /// gives it a new ID, and so a new document of the new kind.
+    var kind: DocumentKind { id.kind ?? .markdown }
+
     /// Suggested filename (sans extension) for exports.
     var exportName: String { (id.name as NSString).deletingPathExtension }
 

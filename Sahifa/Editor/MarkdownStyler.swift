@@ -50,6 +50,13 @@ final class MarkdownStyler {
 
     var theme = EditorTheme()
 
+    /// Off for CSV and TSV, whose raw text is shown plain: a `#` or `*` in a
+    /// cell is data, not a heading or emphasis. Each paragraph still gets its
+    /// own direction.
+    var parsesMarkdown = true {
+        didSet { if parsesMarkdown != oldValue { cachedText = nil } }
+    }
+
     /// Focus mode: paragraph to keep at full strength while everything else
     /// dims. nil = no dimming. Dimming rides the normal diff-apply path
     /// (regular attributes, deterministic), so restyle stays a fixed point
@@ -102,9 +109,11 @@ final class MarkdownStyler {
         let styled = NSMutableAttributedString(string: text, attributes: baseAttributes())
         applyParagraphDirections(styled, ns: ns)
 
-        let document = Document(parsing: text)
-        var walker = StyleWalker(storage: styled, ns: ns, map: SourceMap(text: text), theme: theme)
-        walker.visit(document)
+        if parsesMarkdown {
+            let document = Document(parsing: text)
+            var walker = StyleWalker(storage: styled, ns: ns, map: SourceMap(text: text), theme: theme)
+            walker.visit(document)
+        }
         // Match NSTextStorage's automatic font fixing (e.g. Arabic runs get
         // the cascade's Arabic face) so those runs don't diff as changed on
         // every restyle.

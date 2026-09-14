@@ -94,7 +94,7 @@ struct GitHubStore: DocumentStore {
         let encoding: String?
     }
 
-    /// One folder's entries: subfolders, plus the Markdown files in it.
+    /// One folder's entries: subfolders, plus the files in it Sahifa opens.
     func children(of id: DocumentID) async throws -> [Node] {
         let data = try await fetch(endpoint(for: id))
         guard let entries = try? JSONDecoder().decode([Entry].self, from: data) else {
@@ -103,7 +103,7 @@ struct GitHubStore: DocumentStore {
         }
         let nodes = entries.compactMap { entry -> Node? in
             let isDirectory = entry.type == "dir"
-            guard isDirectory || MarkdownFile.matches(entry.name) else { return nil }
+            guard isDirectory || DocumentKind(fileName: entry.name) != nil else { return nil }
             return Node(id: DocumentID(sourceID: sourceID, path: entry.path),
                         name: entry.name,
                         isDirectory: isDirectory)

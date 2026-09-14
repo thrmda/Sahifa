@@ -221,6 +221,7 @@ private struct EditorPreviewSplit: View {
                     MarkdownEditor(text: $document.text, fontSize: fontSize,
                                    lineSpacing: lineSpacing, focusMode: focusMode,
                                    isEditable: isEditable,
+                                   isMarkdown: !document.kind.isTable,
                                    scrollSync: isSplit ? scrollSync : nil)
                         .id(document.id)
                         .frame(width: isSplit ? editorWidth : width)
@@ -233,7 +234,7 @@ private struct EditorPreviewSplit: View {
                     // reloads the ~1.7 MB font-embedded shell and blanks the
                     // pane; the coordinator swaps content in place instead.
                     MarkdownPreview(markdown: document.text, documentID: document.id,
-                                    scrollSync: scrollSync)
+                                    kind: document.kind, scrollSync: scrollSync)
                         .frame(maxWidth: .infinity)
                 }
             }
@@ -521,7 +522,9 @@ struct DocumentEditorView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if showFormatBar {
+            // Every button is a Markdown edit, which in a CSV file would only
+            // put markup into the data.
+            if showFormatBar, document.kind == .markdown {
                 FormatBarView()
                 Divider()
             }
@@ -554,13 +557,14 @@ struct DocumentEditorView: View {
                 EditorPreviewSplit(document: document, fontSize: fontSize,
                                    lineSpacing: lineSpacing,
                                    isEditable: !document.isReadOnly,
-                                   viewMode: windowState.viewMode)
+                                   viewMode: windowState.activeViewMode)
             }
             Divider()
             StatusBarView(text: document.text,
+                          kind: document.kind,
                           isSaving: document.isSaving,
                           isRetrying: document.saveStatus == .retrying,
-                          viewMode: $windowState.viewMode)
+                          viewMode: $windowState.activeViewMode)
         }
         .background(Color.paper)
     }

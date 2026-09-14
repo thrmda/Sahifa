@@ -364,7 +364,8 @@ private struct NodeLabel: View {
 
     var body: some View {
         HStack(spacing: Space.xs) {
-            Image(systemName: node.isDirectory ? "folder" : "doc.text")
+            Image(systemName: node.isDirectory ? "folder"
+                  : node.id.kind?.isTable == true ? "tablecells" : "doc.text")
                 .foregroundStyle(Color.slate)
                 .imageScale(.small)
                 .accessibilityHidden(true)

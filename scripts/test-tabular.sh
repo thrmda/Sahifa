@@ -17,10 +17,12 @@ BUILD="$(mktemp -d)"
 trap 'rm -rf "$BUILD"' EXIT
 
 swiftc -O \
+  Sahifa/Models/Source.swift \
   Sahifa/Editor/BidiDirection.swift \
   Sahifa/Export/HTMLEscaping.swift \
   Sahifa/Tabular/DelimitedText.swift \
   Sahifa/Tabular/TableHTMLRenderer.swift \
+  Sahifa/Tabular/TablePreview.swift \
   Tests/Tabular/main.swift \
   -o "$BUILD/tabular"
 

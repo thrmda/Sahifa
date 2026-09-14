@@ -208,7 +208,7 @@ struct LocalFileStore: DocumentStore {
 
     func versionImmediately(of id: DocumentID) -> VersionToken? { version(of: id) }
 
-    /// Folders and Markdown files in one directory, folders first, each group
+    /// Folders and the files Sahifa opens in one directory, folders first, each group
     /// ordered the way Finder orders names.
     func childrenImmediately(of id: DocumentID) -> [Node] {
         let contents = (try? FileManager.default.contentsOfDirectory(
@@ -219,7 +219,7 @@ struct LocalFileStore: DocumentStore {
         for url in contents {
             let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?
                 .isDirectory ?? url.hasDirectoryPath
-            guard isDirectory || MarkdownFile.matches(url.lastPathComponent) else { continue }
+            guard isDirectory || DocumentKind(fileName: url.lastPathComponent) != nil else { continue }
             nodes.append(Node(id: id.appending(url.lastPathComponent),
                               name: url.lastPathComponent,
                               isDirectory: isDirectory))
