@@ -43,6 +43,51 @@ check("renaming a folder moves the folder itself",
 check("an unaffected path remaps to nil",
       id("root.md").remapping(from: id("projects"), to: id("work")) == nil)
 
+// MARK: Opened files on a drive that isn't plugged in
+
+@MainActor
+func unpluggedDrive() async {
+    let volumes = root.appendingPathComponent("Volumes")
+    let drive = volumes.appendingPathComponent("Drive")
+    let file = drive.appendingPathComponent("away.md")
+    func plugIn() {
+        try? fm.createDirectory(at: drive, withIntermediateDirectories: true)
+        try? "# away\n".write(to: file, atomically: true, encoding: .utf8)
+    }
+    func listed(_ model: AppModel) -> Bool {
+        model.looseFiles.contains { $0.standardizedFileURL.path == file.standardizedFileURL.path }
+    }
+    func remembered() -> Int { (UserDefaults.standard.array(forKey: "looseFiles") as? [Data])?.count ?? 0 }
+    AppModel.volumesDirectory = volumes.path
+    defer { AppModel.volumesDirectory = "/Volumes" }
+    // This binary's own defaults: a run that crashed can't leave files behind.
+    UserDefaults.standard.removeObject(forKey: "looseFiles")
+
+    plugIn()
+    let model = AppModel()
+    let window = WindowState()
+    window.attach(model)
+    model.openExternal([file], preferring: window)
+    check("a file opened from a drive is listed", listed(model))
+
+    try? fm.removeItem(at: drive)
+    model.refreshLoadedDirectories()
+    check("once the drive is unplugged it drops out of the list", !listed(model))
+    check("…but is still remembered", remembered() == 1, "\(remembered()) saved")
+
+    let relaunched = AppModel()
+    check("a relaunch without the drive keeps it too", remembered() == 1 && !listed(relaunched))
+    plugIn()
+    relaunched.refreshLoadedDirectories()
+    check("plugging the drive back in lists it again", listed(relaunched))
+
+    try? fm.removeItem(at: file)
+    relaunched.refreshLoadedDirectories()
+    check("a file deleted from a drive that is plugged in is forgotten",
+          !listed(relaunched) && remembered() == 0, "\(remembered()) saved")
+    relaunched.removeSource(Source.looseFilesID)
+}
+
 // MARK: Real file operations
 
 @MainActor
@@ -218,6 +263,7 @@ func fileOperations() async {
     _ = token
 }
 
+await unpluggedDrive()
 await fileOperations()
 
 // Clean up our own trashed test files rather than leaving litter behind.

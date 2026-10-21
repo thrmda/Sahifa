@@ -9,7 +9,9 @@ func check(_ label: String, _ condition: Bool, _ detail: String = "") {
 let dir = URL(fileURLWithPath: NSTemporaryDirectory())
     .appendingPathComponent("sahifa-conflict-\(getpid())", isDirectory: true)
 try! FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-defer { try? FileManager.default.removeItem(at: dir) }
+// Not `defer`: the script ends in exit(), which skips it and left a folder
+// behind on every run.
+atexit { try? FileManager.default.removeItem(at: dir) }
 
 /// Every source is local here, so one stand-in source resolves the IDs.
 let testSource = Source(id: UUID(), kind: .localFolder, name: "test", rootURL: dir)

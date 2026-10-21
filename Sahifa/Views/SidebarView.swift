@@ -231,12 +231,30 @@ private struct SourceDisclosure: View {
             // target, so it lands in any slot regardless of what's collapsed.
             .onDrag {
                 draggingSource = source.id
-                return NSItemProvider(object: source.id.uuidString as NSString)
+                let item = SourceDragItem(object: source.id.uuidString as NSString)
+                let dragged = source.id
+                let binding = $draggingSource
+                item.onEnd = {
+                    DispatchQueue.main.async {
+                        if binding.wrappedValue == dragged { binding.wrappedValue = nil }
+                    }
+                }
+                return item
             }
             .onDrop(of: [.text], delegate: SourceDropDelegate(
                 target: source, model: model, dragging: $draggingSource))
         }
     }
+}
+
+/// The item behind a source-header drag. AppKit lets go of it when the drag
+/// ends, dropped or cancelled, and SwiftUI's onDrag has no other way to say
+/// so: a drag released outside the sidebar used to leave its root recorded as
+/// dragging, and a later text drag from another app over a header then
+/// reordered the sidebar.
+private final class SourceDragItem: NSItemProvider {
+    var onEnd: (() -> Void)?
+    deinit { onEnd?() }
 }
 
 /// Reorders source roots by dragging one header onto another. Because the drop

@@ -125,7 +125,15 @@ private final class DirectionBarsOverlay: NSView {
         let origin = textView.textContainerOrigin
         let documentStart = contentManager.documentRange.location
 
-        layoutManager.enumerateTextLayoutFragments(from: nil, options: [.ensuresLayout]) { fragment in
+        // Start at the first fragment being drawn. Starting at the top of the
+        // document laid out everything above it first: 166 ms to draw the
+        // end of a 180 KB document, and a walk of every fragment on each
+        // redraw after that.
+        let top = CGPoint(x: 0, y: max(0, dirtyRect.minY - origin.y))
+        let start = layoutManager.textLayoutFragment(for: top)?.rangeInElement.location
+            ?? layoutManager.textViewportLayoutController.viewportRange?.location
+
+        layoutManager.enumerateTextLayoutFragments(from: start, options: [.ensuresLayout]) { fragment in
             let frame = fragment.layoutFragmentFrame.offsetBy(dx: origin.x, dy: origin.y)
             if frame.minY > dirtyRect.maxY { return false }
             if frame.maxY < dirtyRect.minY { return true }

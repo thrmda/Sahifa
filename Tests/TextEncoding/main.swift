@@ -11,7 +11,9 @@ func check(_ label: String, _ condition: Bool, _ detail: String = "") {
 let dir = URL(fileURLWithPath: NSTemporaryDirectory())
     .appendingPathComponent("sahifa-encoding-\(getpid())", isDirectory: true)
 try! FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-defer { try? FileManager.default.removeItem(at: dir) }
+// Not `defer`: the script ends in exit(), which skips it and left a folder
+// behind on every run.
+atexit { try? FileManager.default.removeItem(at: dir) }
 
 let testSource = Source(id: UUID(), kind: .localFolder, name: "test", rootURL: dir)
 let testStore = LocalFileStore(sourceID: testSource.id, root: dir)

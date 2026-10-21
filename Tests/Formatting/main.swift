@@ -6,6 +6,19 @@ func check(_ label: String, _ condition: Bool, _ detail: String = "") {
     if !condition { failures += 1 }
 }
 
+/// Repeatable random edits: a failure names its seed and step.
+struct SeededGenerator: RandomNumberGenerator {
+    var state: UInt64
+    init(seed: UInt64) { state = seed }
+    mutating func next() -> UInt64 {
+        state &+= 0x9E37_79B9_7F4A_7C15
+        var z = state
+        z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+        z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+        return z ^ (z >> 31)
+    }
+}
+
 /// A real BidiTextView in a real (offscreen) window: NSTextView takes its
 /// undo manager from the window, so undo can't be exercised without one.
 @MainActor
@@ -295,6 +308,215 @@ func run() {
                   emFont?.fontName != bodyFont?.fontName,
                   "\(bodyFont?.fontName ?? "?") -> \(emFont?.fontName ?? "?")")
         }
+    }
+
+    // MARK: Restyling only what an edit changed
+    //
+    // Typing restyles just the blocks an edit touched. Whatever the edit,
+    // that has to land exactly where restyling the whole document would.
+
+    do {
+        let seed = """
+        # عنوان Heading
+
+        Intro paragraph with *emphasis* and a [link][ref].
+
+        - item one
+        - عنصر ثاني
+          continued
+
+        > quoted **bold**
+        > سطر
+
+        ```
+        let x = 1
+        ```
+
+        | a | b |
+        | --- | --- |
+        | 1 | ٢ |
+
+        Title
+        =====
+
+        123
+
+        نص عربي فيه `code` و ~~شطب~~.\r\nCRLF line\r\n\r\n1. numbered
+
+        [ref]: https://example.com
+        """
+        let snippets = ["x", "ب", "\n", "\n\n", "# ", "*", "**", "`", "```\n", "~~~", "> ", "- ", "1. ",
+                        "| c |", "---", "===", "]: https://e.com", "[ref]", "\r\n", " ", "123", "مرحبا", "_"]
+        var mismatches = 0
+        var firstMismatch = ""
+        // Without link reference definitions only a window around each edit
+        // is parsed again; with them, the whole document is.
+        let plain = seed.replacingOccurrences(of: "\n\n[ref]: https://example.com", with: "")
+        for (seedValue, markdown, references) in [(1, true, true), (2, true, true), (3, true, false),
+                                                  (4, true, false), (5, true, false), (6, false, true)] {
+            var generator = SeededGenerator(seed: UInt64(seedValue))
+            let snippets = references ? snippets : snippets.filter { !$0.contains("]:") }
+            let styler = MarkdownStyler()
+            styler.theme = EditorTheme(fontSize: 16, lineHeightMultiple: 1.4)
+            styler.parsesMarkdown = markdown
+            let storage = NSTextStorage(string: references ? seed : plain)
+            styler.observeEdits(of: storage)
+            styler.restyle(storage)
+            for step in 0..<400 {
+                let length = storage.length
+                let location = Int.random(in: 0...length, using: &generator)
+                let removal = Int.random(in: 0...3, using: &generator) == 0
+                    ? min(Int.random(in: 0...12, using: &generator), length - location) : 0
+                let insertion = Int.random(in: 0...4, using: &generator) == 0 ? "" : snippets.randomElement(using: &generator)!
+                // As typing does: the new text arrives with plain attributes.
+                storage.replaceCharacters(in: NSRange(location: location, length: removal),
+                                          with: NSAttributedString(string: insertion, attributes: styler.baseAttributes()))
+                if Int.random(in: 0...5, using: &generator) == 0 {
+                    styler.focusParagraph = Int.random(in: 0...2, using: &generator) == 0 ? nil
+                        : (storage.string as NSString).paragraphRange(
+                            for: NSRange(location: Int.random(in: 0...storage.length, using: &generator), length: 0))
+                }
+                styler.restyleEdited(storage)
+
+                let reference = MarkdownStyler()
+                reference.theme = styler.theme
+                reference.parsesMarkdown = markdown
+                reference.focusParagraph = styler.focusParagraph
+                let fresh = NSTextStorage(string: storage.string)
+                reference.restyle(fresh)
+                if !fresh.isEqual(to: storage) {
+                    mismatches += 1
+                    if firstMismatch.isEmpty { firstMismatch = "seed \(seedValue), step \(step)" }
+                    styler.restyle(storage)
+                }
+            }
+        }
+        check("restyling only the edit matches restyling everything, over 2400 random edits",
+              mismatches == 0, mismatches == 0 ? "" : "\(mismatches) mismatches; first at \(firstMismatch)")
+    }
+
+    // Typing in a long document restyles only around the edit: anywhere in
+    // a paragraph, at its end, on a new line, in a list or a code block.
+    do {
+        var long = ""
+        for i in 0..<60 {
+            long += "## Section \(i)\n\nA paragraph of prose with *emphasis* and `code`.\n\n"
+            long += "- one\n- two\n\n```\nlet x = \(i)\n```\n\nفقرة عربية \(i).\n\n"
+        }
+        let styler = MarkdownStyler()
+        styler.theme = EditorTheme(fontSize: 16, lineHeightMultiple: 1.4)
+        let storage = NSTextStorage(string: long)
+        styler.observeEdits(of: storage)
+        styler.restyle(storage)
+        let rebuilds = styler.fullRebuilds
+        let ns = { storage.string as NSString }
+        let places = [
+            ns().range(of: "prose", options: [], range: NSRange(location: ns().length / 2, length: ns().length / 2)).location,
+            NSMaxRange(ns().range(of: "`code`.", options: [], range: NSRange(location: ns().length / 3, length: ns().length / 3))),
+            NSMaxRange(ns().range(of: "- two", options: [], range: NSRange(location: ns().length / 2, length: ns().length / 2))),
+            ns().range(of: "let x", options: [], range: NSRange(location: ns().length / 2, length: ns().length / 2)).location,
+            NSMaxRange(ns().range(of: "عربية", options: [], range: NSRange(location: ns().length / 2, length: ns().length / 2))),
+        ]
+        for place in places {
+            for typed in ["x", "\n", "y"] {
+                let at = place + (typed == "y" ? 1 : 0)
+                storage.replaceCharacters(in: NSRange(location: at, length: 0),
+                                          with: NSAttributedString(string: typed, attributes: styler.baseAttributes()))
+                styler.restyleEdited(storage)
+            }
+        }
+        check("typing in a long document never restyles all of it",
+              styler.fullRebuilds == rebuilds, "\(styler.fullRebuilds - rebuilds) full rebuilds")
+        let fresh = NSTextStorage(string: storage.string)
+        let reference = MarkdownStyler()
+        reference.theme = styler.theme
+        reference.restyle(fresh)
+        check("…and comes out the same as restyling it all", fresh.isEqual(to: storage))
+    }
+
+    // Edits that once came out differently from a full restyle: cmark's
+    // source ranges can overlap or run past a block around CR line endings
+    // and open fences, and which of two equal neighbours was typed can only
+    // come from the storage.
+    do {
+        let replays: [(String, String, Int, Int, String)] = [
+            ("a newline typed beside another newline",
+             "# ع| c |نوان Heading\n\nInaragraph with *emphasis* a*nd\n\n.\n[ref]m one\n- \n\nعنصر ث---اني\n  c*ont\ni1x**1.  ```\nn*ued\n\n> qxuoted **boمرحباld**\n123> سطر\n\n| [ref]c |```\nlet x = 1\n```مرحبا\n\n**| a | b |\n| --- | --[ref]- |\n| 1ب ٢ |\n\nTitl=1. | c |\nنص عربي في---~~شطب~~.\r\nCRLF line\r\n\r\n1. - numb`ered\n\n[ref]: htxtps://example.com",
+             70, 0, "\n"),
+            ("an open fence inside a quote",
+             "#==> =ان H`g\n\n\r\nInt123_ph|\r\n*=\r\n [l`ink][rب===1. ef\r\nte\r\n# m_ ```م\n\nرحبا*xن===صر-123  ث--- ا```=>- مرحبا`2```\n3t_*\n1```===1_.\n \n[reب- f]3*===ط1. ر\n\n````ب`123\n# l`x\r\n = 1\n12\n\n3`x`# ~~~`\n| x---c |x ```\n> ```\nref]*xم| c |رح*~ب|> T \n===[rx\n\n ~~~ef]---~~~1. \r\n=> \n12~~_~3\n_**r#1.  e```x`\n# f\r\n]\n> \nر> \n\nببي1x.  # >~~~ x-  ~1# 2c 11. .\n\n  \n\n\n\nمرحبا`123**--ب-1. ب c |1. \n\n=li#  >~> ~~ n1. > 2*3\r\nب````~~**~\n--~~~-``\n\n\n\n\n1. ===u1- . mbمر-\r\n--حباx",
+             259, 0, "\n"),
+            ("a setext underline over CRLF",
+             "| c |# عبمر\n- \r\nحبا\n##  \n1._ ~\n\n~ب*_\nب# ا3*** and| c | a [l> in> - k1.# -1.  it e *| c |* c |رحببا\no** ne\n-x | c \r===123xنص*# *ر ث| c |_`م123رحباان---ب[ref]> \n*يx*t``e**d1.  `*\n*1. `ب _\n >\n==\r\n=\n`\nl*e===t  1\n``-> \n\n**a| c | | b-[ref   | c ||\r\nب\n| -ب-> |>x مرحبا 1 \n\n | \n\n٢# ب |---\n\n---\n- T\n\n112323i~~~=12**31. - 23\n\n`\nب- ب- `cod`\r\n[ref]| c |x~_~~~===.\n\r\nCRLF~~مرحبا~l# -| c| c |. ا2> 3`",
+             14, 0, "# "),
+            ("a lone CR beside a setext heading",
+             "# `di```\nf].| c | p\n\nara===gr\nap~~~h11. . | ]: https://x3e.c_om **# c# -_- ]: httpمرحباomit\n*_h[[ref]e * مرحبا| c |an`1---.--xx > /e.com|\n c |=\n\nd\n\n>]\n_[ref]_\n]:` http#]: https:[r- ef]/# /e.com~~~.com`*:/| c |\r\n# *\n-`````\n`\n [re1. f> ] [ref]e\r-\r\n -x-\n**1`23 ~~~12| c -`--|3`\n\n1xب\n===\n b |ب> : ---https:123~~~//e.c\n12 بي>  **فبxي# ```1. c1. \n|`]\r\n: ht`* ]: بht```\ncom c ```\ntps://===.\n=x== `\r\n\r**رمرحبا_حب [re1. f]: https://e.com\nef|  tps:/- co\nm] : 1---2\n\n31**. - \nt**\n\n`p\n\n1231. *\r\nf]: h---ttps:/| c |/e.com",
+             246, 1, "")
+        ]
+        for (name, before, location, removal, insertion) in replays {
+            let styler = MarkdownStyler()
+            styler.theme = EditorTheme(fontSize: 16, lineHeightMultiple: 1.4)
+            let storage = NSTextStorage(string: before)
+            styler.observeEdits(of: storage)
+            styler.restyle(storage)
+            storage.replaceCharacters(in: NSRange(location: location, length: removal),
+                                      with: NSAttributedString(string: insertion, attributes: styler.baseAttributes()))
+            styler.restyleEdited(storage)
+            let fresh = NSTextStorage(string: storage.string)
+            let reference = MarkdownStyler()
+            reference.theme = styler.theme
+            reference.restyle(fresh)
+            check("restyling only the edit is exact after \(name)", fresh.isEqual(to: storage))
+        }
+    }
+
+    // A fence left open inside a quote ends with the quote; cmark's range
+    // for it runs on over the next line, which used to turn that line into code.
+    do {
+        let styler = MarkdownStyler()
+        styler.theme = EditorTheme(fontSize: 16, lineHeightMultiple: 1.4)
+        let text = "> ```\nnext para"
+        let storage = NSTextStorage(string: text)
+        styler.restyle(storage)
+        let at = (text as NSString).range(of: "next").location
+        let font = storage.attribute(.font, at: at, effectiveRange: nil) as? NSFont
+        check("the line after an open fence in a quote is not code",
+              font.map { !$0.fontName.contains("Mono") } == true, font?.fontName ?? "nil")
+    }
+
+    // A setext heading over CRLF lines: cmark's range for it runs into the
+    // next line, which used to set that line at heading size too.
+    do {
+        let styler = MarkdownStyler()
+        styler.theme = EditorTheme(fontSize: 16, lineHeightMultiple: 1.4)
+        let text = "Title\n- \r\nnext line"
+        let storage = NSTextStorage(string: text)
+        styler.restyle(storage)
+        let size = { (word: String) -> CGFloat in
+            let at = (text as NSString).range(of: word).location
+            return (storage.attribute(.font, at: at, effectiveRange: nil) as? NSFont)?.pointSize ?? 0
+        }
+        check("a CRLF setext heading is a heading", size("Title") > 20, "\(size("Title")) pt")
+        check("…and the line after it is not", size("next") == 16, "\(size("next")) pt")
+    }
+
+    // A paragraph with no letters takes the direction of the one before it,
+    // so turning that one Arabic has to restyle the paragraphs after it too.
+    do {
+        let styler = MarkdownStyler()
+        styler.theme = EditorTheme(fontSize: 16, lineHeightMultiple: 1.4)
+        let storage = NSTextStorage(string: "abc\n\n123\n\n456\n\nxyz")
+        styler.observeEdits(of: storage)
+        styler.restyle(storage)
+        storage.replaceCharacters(in: NSRange(location: 0, length: 0),
+                                  with: NSAttributedString(string: "ب", attributes: styler.baseAttributes()))
+        styler.restyleEdited(storage)
+        let digits = (storage.string as NSString).range(of: "456").location
+        check("a number-only paragraph follows the paragraph before it into RTL",
+              storage.attribute(.sahifaDirection, at: digits, effectiveRange: nil) as? Int == 1)
+        let latin = (storage.string as NSString).range(of: "xyz").location
+        check("…and the next paragraph with letters keeps its own direction",
+              storage.attribute(.sahifaDirection, at: latin, effectiveRange: nil) as? Int == 0)
     }
 
     // MARK: Hardening round (2026-10-21)

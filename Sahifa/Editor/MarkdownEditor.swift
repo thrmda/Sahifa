@@ -75,6 +75,7 @@ struct MarkdownEditor: NSViewRepresentable {
         coordinator.styler.theme = EditorTheme(fontSize: CGFloat(fontSize),
                                                lineHeightMultiple: CGFloat(lineSpacing))
         coordinator.styler.parsesMarkdown = isMarkdown
+        if let storage = textView.textStorage { coordinator.styler.observeEdits(of: storage) }
         textView.typingAttributes = coordinator.styler.baseAttributes()
 
         let scrollView = NSScrollView()
@@ -171,12 +172,12 @@ struct MarkdownEditor: NSViewRepresentable {
             guard let textView, !textView.hasMarkedText() else { return }
             parent.text = textView.string
             _ = updateFocusParagraph()
-            restyle()
+            restyle(onlyEdited: true)
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {
             if updateFocusParagraph() {
-                restyle()
+                restyle(onlyEdited: true)
             }
         }
 
@@ -214,9 +215,16 @@ struct MarkdownEditor: NSViewRepresentable {
             return true
         }
 
-        func restyle() {
+        /// `onlyEdited` restyles just what the user's own edit changed, which
+        /// keeps typing fast in a long document; text set from outside needs
+        /// the full pass.
+        func restyle(onlyEdited: Bool = false) {
             guard let textView, let storage = textView.textStorage else { return }
-            styler.restyle(storage)
+            if onlyEdited {
+                styler.restyleEdited(storage)
+            } else {
+                styler.restyle(storage)
+            }
             textView.refreshDirectionBars()
         }
     }

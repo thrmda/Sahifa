@@ -31,7 +31,7 @@ on disk.
 - **Formatting without leaving the keyboard.** A full **Format** menu — bold,
   italic, strikethrough, headings, lists, quote, inline code, code block,
   link, image, rule and table — with shortcuts for the common ones (⌘B, ⌘I,
-  ⌘1–4, ⇧⌘7/⇧⌘8, ⌘E, ⌘K), plus an optional icon toolbar over the editor for
+  ⌘1–4, ⇧⌘7/⇧⌘8, ⌘K), plus an optional icon toolbar over the editor for
   the no-shortcut path. Paste cells from Numbers or Excel as a Markdown table,
   turn a selection of CSV into one, or copy a table back out as CSV.
 - **Focus mode** dims everything but the paragraph you're writing (⇧⌘F).
@@ -172,9 +172,8 @@ English/Arabic document and an Arabic-named file.
 | Bold / Italic / Strikethrough | ⌘B / ⌘I / ⇧⌘X |
 | Heading 1–4 | ⌘1 – ⌘4 |
 | Bulleted / Numbered list | ⇧⌘8 / ⇧⌘7 |
-| Inline code | ⌘E |
 | Link | ⌘K |
-| Quote, Code block, Image, Rule, Table | Format menu |
+| Inline code, Quote, Code block, Image, Rule, Table | Format menu |
 
 The UI language follows the system by default; you can pin it to English or
 العربية in Settings — the window chrome (including the sidebar side) switches

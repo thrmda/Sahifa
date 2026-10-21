@@ -90,8 +90,9 @@ struct GitHubStore: DocumentStore {
         switch http.statusCode {
         case 401:
             return RemoteStoreError.notAuthorised
-        case 429, 403 where rateLimited:
-            // (`where` binds only to the pattern beside it: 429 always counts.)
+        case 429:
+            return RemoteStoreError.rateLimited
+        case 403 where rateLimited:
             return RemoteStoreError.rateLimited
         case 403:
             return writing ? RemoteStoreError.readOnly : RemoteStoreError.notAuthorised
