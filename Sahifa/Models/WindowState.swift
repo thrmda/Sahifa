@@ -115,8 +115,12 @@ final class WindowState: ObservableObject {
                 // A blank "New Tab" and a remote (GitHub) file both fail exists()
                 // by nature — dropping them here would wrongly yank the window
                 // off an empty tab or a repo file every time the tree reloads.
+                // And a folder that is unplugged or renamed away is not a
+                // deleted file: its document stays, edits and all, for when
+                // it comes back.
                 guard !selected.isBlankTab,
-                      model.source(selected.sourceID)?.isLocal == true,
+                      let source = model.source(selected.sourceID), source.isLocal,
+                      source.status == .ready,
                       !model.exists(selected) else { return }
                 self.closeTab(selected)
             }

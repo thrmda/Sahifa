@@ -101,7 +101,7 @@ private struct GitHubConnectSheet: View {
                 .textFieldStyle(.roundedBorder)
                 .disabled(isChecking)
                 .onSubmit(connect)
-            if case .failed(let reason) = account.state {
+            if let reason = account.connectError ?? { if case .failed(let r) = account.state { return r }; return nil }() {
                 Text(verbatim: reason)
                     .foregroundStyle(Color.warning)
                     .fixedSize(horizontal: false, vertical: true)
@@ -123,7 +123,9 @@ private struct GitHubConnectSheet: View {
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
                     .disabled(isChecking)
-                Button("Connect", action: connect)
+                Button(action: connect) {
+                    Text("Connect").foregroundStyle(Color.onSage)
+                }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
                     .tint(.sage)
@@ -202,14 +204,14 @@ struct SettingsView: View {
                         .matchSliderToChromeDirection()
                 } label: {
                     Text("Font Size")
-                    Text(verbatim: "\(Int(fontSize)) pt")
+                    Text("\(Int(fontSize)) pt")
                 }
                 LabeledContent {
                     Slider(value: $lineSpacing, in: 1.0...2.0, step: 0.05)
                         .matchSliderToChromeDirection()
                 } label: {
                     Text("Line Spacing")
-                    Text(verbatim: String(format: "%.2f×", lineSpacing))
+                    Text("\(lineSpacing.formatted(.number.precision(.fractionLength(2))))×")
                 }
             }
         }

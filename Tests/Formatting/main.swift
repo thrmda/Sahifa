@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 
 var failures = 0
 func check(_ label: String, _ condition: Bool, _ detail: String = "") {
@@ -17,6 +18,35 @@ struct SeededGenerator: RandomNumberGenerator {
         z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
         return z ^ (z >> 31)
     }
+}
+
+/// A box the editor's binding writes into, standing in for DocumentModel.text.
+final class TextBox { var text: String; init(_ text: String) { self.text = text } }
+
+/// The editor wired the way MarkdownEditor.makeNSView wires it: the TextKit 2
+/// stack, the coordinator as delegate, the styler observing the storage.
+@MainActor
+func makeCoordinatedEditor(_ text: String) -> (view: BidiTextView, box: TextBox, coordinator: MarkdownEditor.Coordinator) {
+    let box = TextBox(text)
+    let editor = MarkdownEditor(text: Binding(get: { box.text }, set: { box.text = $0 }),
+                                fontSize: 16, lineSpacing: 1.4)
+    let coordinator = editor.makeCoordinator()
+    let contentStorage = NSTextContentStorage()
+    let layoutManager = NSTextLayoutManager()
+    contentStorage.addTextLayoutManager(layoutManager)
+    let container = NSTextContainer(size: NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
+    container.widthTracksTextView = true
+    layoutManager.textContainer = container
+    let view = BidiTextView(frame: NSRect(x: 0, y: 0, width: 600, height: 400), textContainer: container)
+    view.isRichText = false
+    view.allowsUndo = true
+    let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
+    window.contentView = view
+    coordinator.styler.theme = EditorTheme(fontSize: 16, lineHeightMultiple: 1.4)
+    coordinator.attach(view, contentStorage: contentStorage, layoutManager: layoutManager)
+    view.string = text
+    coordinator.restyle()
+    return (view, box, coordinator)
 }
 
 /// A real BidiTextView in a real (offscreen) window: NSTextView takes its
@@ -308,6 +338,113 @@ func run() {
                   emFont?.fontName != bodyFont?.fontName,
                   "\(bodyFont?.fontName ?? "?") -> \(emFont?.fontName ?? "?")")
         }
+    }
+
+    // MARK: Undo reaches the document
+    //
+    // Under TextKit 2, undo and redo rewrite the storage without the
+    // delegate's textDidChange. The binding, the styling and the direction
+    // bars have to follow anyway, or the next SwiftUI update put the old
+    // text back over the undone one and threw the undo history away.
+    do {
+        let (view, box, _) = makeCoordinatedEditor("Title\n\nBody")
+        view.setSelectedRange(NSRange(location: 0, length: 0))
+        view.insertText("# ", replacementRange: NSRange(location: 0, length: 0))
+        check("typing reaches the binding", box.text == "# Title\n\nBody", box.text)
+        view.undoManager?.undo()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        check("undo reaches the binding", box.text == "Title\n\nBody", box.text)
+        let size = (view.textStorage?.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)?.pointSize ?? 0
+        check("…and the undone heading is styled as prose again", size == 16, "\(size) pt")
+        view.undoManager?.redo()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        check("redo reaches the binding", box.text == "# Title\n\nBody", box.text)
+        let again = (view.textStorage?.attribute(.font, at: 2, effectiveRange: nil) as? NSFont)?.pointSize ?? 0
+        check("…and is styled as a heading", again > 20, "\(again) pt")
+    }
+
+    // MARK: Review round two
+
+    // A CSV has no Markdown blocks; typing in one restyled the whole file.
+    do {
+        var csv = "id,name,amount\n"
+        for i in 0..<4000 { csv += "\(i),item \(i),\(i * 3)\n" }
+        let styler = MarkdownStyler()
+        styler.theme = EditorTheme(fontSize: 16, lineHeightMultiple: 1.4)
+        styler.parsesMarkdown = false
+        let storage = NSTextStorage(string: csv)
+        styler.observeEdits(of: storage)
+        styler.restyle(storage)
+        storage.replaceCharacters(in: NSRange(location: storage.length / 2, length: 0),
+                                  with: NSAttributedString(string: "x", attributes: styler.baseAttributes()))
+        styler.restyleEdited(storage)
+        check("typing in a table file restyles only the rows around the edit",
+              styler.lastRestyledLength < 200, "\(styler.lastRestyledLength) of \(storage.length)")
+    }
+
+    // One long line (a paragraph pasted from a word processor) with inline
+    // markup used to cost seconds a keystroke: every node's position walked
+    // the line from its start.
+    do {
+        var line = ""
+        while line.utf8.count < 20_000 { line += "نص عربي مع *تشديد* و `كود` and some English, " }
+        let styler = MarkdownStyler()
+        styler.theme = EditorTheme(fontSize: 16, lineHeightMultiple: 1.4)
+        let storage = NSTextStorage(string: line)
+        styler.observeEdits(of: storage)
+        styler.restyle(storage)
+        storage.replaceCharacters(in: NSRange(location: storage.length / 2, length: 0),
+                                  with: NSAttributedString(string: "x", attributes: styler.baseAttributes()))
+        let began = CFAbsoluteTimeGetCurrent()
+        styler.restyleEdited(storage)
+        let took = CFAbsoluteTimeGetCurrent() - began
+        check("a keystroke in a 20 KB single-line Arabic paragraph stays well under half a second",
+              took < 0.4, String(format: "%.0f ms", took * 1000))
+    }
+
+    // "]:" inside a code block is not a link reference definition.
+    do {
+        let styler = MarkdownStyler()
+        styler.theme = EditorTheme(fontSize: 16, lineHeightMultiple: 1.4)
+        let storage = NSTextStorage(string: "intro\n\n```\narr[i]: x\n```\n\nmore text here\n")
+        styler.observeEdits(of: storage)
+        styler.restyle(storage)
+        let rebuilds = styler.fullRebuilds
+        storage.replaceCharacters(in: NSRange(location: 2, length: 0),
+                                  with: NSAttributedString(string: "y", attributes: styler.baseAttributes()))
+        styler.restyleEdited(storage)
+        check("a bracket-colon in code does not force a full restyle", styler.fullRebuilds == rebuilds)
+        check("…while a real definition is recognised",
+              MarkdownStyler.hasReferenceDefinition("text\n\n[ref]: https://e.com") && !MarkdownStyler.hasReferenceDefinition("arr[i]: x"))
+    }
+
+    // A rule and a table in a CRLF file keep its line endings, with no
+    // extra blank line.
+    do {
+        let e = makeEditor("a\r\nb", select: NSRange(location: 1, length: 0))
+        e.sahifaInsertHorizontalRule(nil)
+        check("a rule in a CRLF file keeps CRLF", e.string == "a\r\n\r\n---\r\n\r\nb", e.string.debugDescription)
+        let t = makeEditor("a", select: NSRange(location: 1, length: 0))
+        e.undoManager?.removeAllActions()
+        t.sahifaInsertTable(nil)
+        check("a table at the end of a file adds one blank line and ends the file",
+              t.string == "a\n\n| Column | Column |\n| --- | --- |\n|  |  |\n", t.string.debugDescription)
+        check("…with the first Column selected", t.selectedRange() == NSRange(location: 5, length: 6),
+              "\(t.selectedRange())")
+    }
+
+    // Arabic-Indic digits are prose to cmark, so a numbered list is added.
+    do {
+        let e = makeEditor("١. foo", select: NSRange(location: 0, length: 0))
+        e.sahifaToggleNumberedList(nil)
+        check("a line starting with Arabic digits gets a list marker", e.string == "1. ١. foo", e.string)
+    }
+
+    // A heading indented by up to three spaces is still a heading.
+    do {
+        let e = makeEditor("  # x", select: NSRange(location: 3, length: 0))
+        e.sahifaHeading1(nil)
+        check("an indented heading toggles off instead of stacking", e.string == "x", e.string)
     }
 
     // MARK: Restyling only what an edit changed

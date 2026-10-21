@@ -33,6 +33,14 @@ check("http, mailto and relative links are kept",
 check("a data: image is kept", body.contains("src=\"data:image/png;base64,AAAA\""))
 check("a javascript: image source is dropped", !body.contains("src=\"javascript:"))
 
+let refresh = MarkdownHTMLRenderer.body(from: """
+<meta http-equiv="refresh" content="0;url=http://127.0.0.1:9/evil">
+
+Text with an inline <META charset=x> tag and a kept <b>bold</b>.
+""")
+check("a meta refresh in raw HTML is dropped from the export", !refresh.lowercased().contains("<meta"))
+check("…while other raw HTML stays", refresh.contains("<b>bold</b>"))
+
 let exported = MarkdownHTMLRenderer.standalone(title: "t", markdown: hostile)
 check("an exported page carries a Content Security Policy",
       exported.contains("http-equiv=\"Content-Security-Policy\""))

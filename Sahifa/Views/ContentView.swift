@@ -171,9 +171,11 @@ struct ContentView: View {
             } description: {
                 Text("Add a folder of Markdown files, or open a single file. Folders stay in the sidebar until you remove them.")
             } actions: {
-                Button("Add Folder…") { model.chooseFolder() }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.sage)
+                Button { model.chooseFolder() } label: {
+                    Text("Add Folder…").foregroundStyle(Color.onSage)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.sage)
                 Button("Open File…") { model.chooseFile() }
             }
             // On macOS ContentUnavailableView takes its ideal size rather than

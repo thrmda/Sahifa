@@ -71,8 +71,41 @@ struct GitHubStore: DocumentStore {
         return request
     }
 
+    /// Every GitHub request goes through here rather than the shared session.
+    /// That one keeps an on-disk cache, and a cache policy only governs
+    /// loading: private documents, and the request that fetched them with
+    /// its Authorization header, were being written to Library/Caches in
+    /// plain SQLite. Ephemeral keeps nothing on disk.
+    static let session: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.urlCache = nil
+        return URLSession(configuration: configuration, delegate: Redirects(), delegateQueue: nil)
+    }()
+
+    /// A renamed or transferred repository answers 301. URLSession follows
+    /// it but drops the Authorization header, so the token's own private
+    /// repository came back 404 and a save arrived anonymous. Put it back
+    /// when the redirect stays on GitHub's API.
+    final class Redirects: NSObject, URLSessionTaskDelegate {
+        func urlSession(_ session: URLSession, task: URLSessionTask,
+                        willPerformHTTPRedirection response: HTTPURLResponse,
+                        newRequest request: URLRequest) async -> URLRequest? {
+            Self.redirected(request, from: task.originalRequest)
+        }
+
+        static func redirected(_ request: URLRequest, from original: URLRequest?) -> URLRequest {
+            var request = request
+            if request.url?.host == "api.github.com",
+               request.value(forHTTPHeaderField: "Authorization") == nil,
+               let auth = original?.value(forHTTPHeaderField: "Authorization") {
+                request.setValue(auth, forHTTPHeaderField: "Authorization")
+            }
+            return request
+        }
+    }
+
     private func fetch(_ url: URL) async throws -> Data {
-        let (data, response) = try await URLSession.shared.data(for: request(url))
+        let (data, response) = try await Self.session.data(for: request(url))
         guard let http = response as? HTTPURLResponse else { return data }
         if (200..<300).contains(http.statusCode) { return data }
         throw Self.error(for: http, body: data, writing: false)
@@ -95,7 +128,9 @@ struct GitHubStore: DocumentStore {
         case 403 where rateLimited:
             return RemoteStoreError.rateLimited
         case 403:
-            return writing ? RemoteStoreError.readOnly : RemoteStoreError.notAuthorised
+            // This repository refusing (an organisation's rules, a token
+            // scoped elsewhere), not the credential as such: a 401 is that.
+            return writing ? RemoteStoreError.readOnly : RemoteStoreError.forbidden
         case 404:
             return RemoteStoreError.notFound
         case 409 where writing, 422 where writing:
@@ -141,11 +176,14 @@ struct GitHubStore: DocumentStore {
                         name: entry.name,
                         isDirectory: isDirectory)
         }
-        return nodes.sorted {
+        let sorted = nodes.sorted {
             $0.isDirectory == $1.isDirectory
                 ? $0.name.localizedStandardCompare($1.name) == .orderedAscending
                 : $0.isDirectory
         }
+        // The contents API stops at 1,000 entries and says nothing about it.
+        guard entries.count < 1000 else { throw RemoteStoreError.partialListing(sorted) }
+        return sorted
     }
 
     func read(_ id: DocumentID) async throws -> DocumentContents {
@@ -200,7 +238,7 @@ struct GitHubStore: DocumentStore {
         if let branch { body["branch"] = branch }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await Self.session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw RemoteStoreError.server(status: 0)
         }
@@ -229,7 +267,7 @@ struct GitHubStore: DocumentStore {
         var body: [String: Any] = ["message": "Delete \(id.name)", "sha": version.raw]
         if let branch { body["branch"] = branch }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await Self.session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw RemoteStoreError.server(status: 0)
         }
@@ -276,11 +314,16 @@ enum RemoteStoreError: LocalizedError {
     case readOnly
     case notFound
     case notAuthorised
+    /// Refused for this repository in particular, with a credential GitHub
+    /// otherwise accepts.
+    case forbidden
     case rateLimited
     case notADirectory
     /// GitHub refused a change for a reason of its own, in its own words.
     case rejected(String)
     case server(status: Int)
+    /// GitHub lists at most 1,000 entries of a folder; these are the first.
+    case partialListing([Node])
 
     var errorDescription: String? {
         switch self {
@@ -290,6 +333,10 @@ enum RemoteStoreError: LocalizedError {
             return String(localized: "Not found on the server.")
         case .notAuthorised:
             return String(localized: "Access was refused. Check the account or token.")
+        case .forbidden:
+            return String(localized: "GitHub refused access to this repository. Check the token's permissions or the organisation's settings.")
+        case .partialListing:
+            return String(localized: "GitHub lists at most 1,000 items in a folder. The rest aren't shown.")
         case .rateLimited:
             return String(localized: "GitHub's request limit was reached. Try again shortly.")
         case .notADirectory:

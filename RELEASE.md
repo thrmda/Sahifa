@@ -105,8 +105,9 @@ it — it should launch with no Gatekeeper prompt.
 
 - The bundle identifier is `me.alangari.Sahifa`. Change it (and the signing
   certificate) if you're shipping under a different account.
-- Sahifa makes **no network calls**. It nonetheless ships the
-  `com.apple.security.network.client` entitlement, because a sandboxed
+- Sahifa's only network use is the GitHub repositories you add yourself. The
+  `com.apple.security.network.client` entitlement would be needed even without
+  them, because a sandboxed
   `WKWebView` — used for the live preview — comes up **blank** without it, even
   though the preview only ever loads a local, self-contained HTML string. The
   remaining entitlements are file access and app-scope bookmarks.

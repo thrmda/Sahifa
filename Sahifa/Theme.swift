@@ -22,7 +22,7 @@ enum Brand {
     /// so the old name `Sand` described only half the app.
     static var panel: NSColor { NSColor(named: "Panel") ?? NSColor(srgbRed: 0.922, green: 0.894, blue: 0.831, alpha: 1) }
     static var ink: NSColor { NSColor(named: "Ink") ?? NSColor(srgbRed: 0.094, green: 0.149, blue: 0.259, alpha: 1) }
-    static var slate: NSColor { NSColor(named: "Slate") ?? NSColor(srgbRed: 0.357, green: 0.384, blue: 0.439, alpha: 1) }
+    static var slate: NSColor { NSColor(named: "Slate") ?? NSColor(srgbRed: 0.337, green: 0.365, blue: 0.420, alpha: 1) }
     /// Accents and affordances. In light mode Sage is 5.01:1 on Paper but only
     /// 4.27:1 on Panel — under AA for text. Audited: on Panel it only ever
     /// colours icons and the active-tab underline, where the 3:1 non-text
@@ -108,6 +108,14 @@ extension Color {
     static let sage = Color("Sage")
     static let gold = Color("Gold")
     static let warning = Color("Warning")
+
+    /// Text on a Sage-filled control (a prominent button). White clears AA on
+    /// the light Sage (5.4:1) but not on the lighter dark Sage (2.6:1), where
+    /// the dark paper does (6.4:1).
+    static let onSage = Color(nsColor: NSColor(name: nil) { appearance in
+        let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        return dark ? NSColor(srgbRed: 0.075, green: 0.114, blue: 0.192, alpha: 1) : .white
+    })
 
     /// A faint panel fill that groups a source and its files in the sidebar —
     /// a touch lighter than `panel` in the dark theme, a touch darker in light.

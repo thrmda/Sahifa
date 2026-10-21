@@ -68,14 +68,10 @@ struct MarkdownEditor: NSViewRepresentable {
             NSAttributedString.Key.backgroundColor: Brand.sage.withAlphaComponent(0.25),
         ]
 
-        textView.delegate = coordinator
-        coordinator.textView = textView
-        coordinator.contentStorage = contentStorage
-        coordinator.layoutManager = layoutManager
         coordinator.styler.theme = EditorTheme(fontSize: CGFloat(fontSize),
                                                lineHeightMultiple: CGFloat(lineSpacing))
         coordinator.styler.parsesMarkdown = isMarkdown
-        if let storage = textView.textStorage { coordinator.styler.observeEdits(of: storage) }
+        coordinator.attach(textView, contentStorage: contentStorage, layoutManager: layoutManager)
         textView.typingAttributes = coordinator.styler.baseAttributes()
 
         let scrollView = NSScrollView()
@@ -110,6 +106,10 @@ struct MarkdownEditor: NSViewRepresentable {
 
         var needsRestyle = false
 
+        // An undo the storage holds but the document doesn't yet must go out
+        // before the document's text is compared with the editor's, or it
+        // would be mistaken for an external change and written back over.
+        coordinator.syncFromStorage()
         if coordinator.adoptExternalText(text) {
             needsRestyle = true
         }
@@ -158,6 +158,52 @@ struct MarkdownEditor: NSViewRepresentable {
             self.parent = parent
         }
 
+        /// Takes charge of a text view: its delegate, and the storage edits
+        /// behind it.
+        func attach(_ textView: BidiTextView, contentStorage: NSTextContentStorage,
+                    layoutManager: NSTextLayoutManager) {
+            textView.delegate = self
+            self.textView = textView
+            self.contentStorage = contentStorage
+            self.layoutManager = layoutManager
+            guard let storage = textView.textStorage else { return }
+            styler.observeEdits(of: storage)
+            // Undo and redo rewrite the storage without textDidChange under
+            // TextKit 2, so the storage itself is watched: the document, the
+            // styling and the bars have to follow those edits too, or the
+            // next SwiftUI update put the pre-undo text back over them.
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(storageDidProcessEditing(_:)),
+                name: NSTextStorage.didProcessEditingNotification, object: storage)
+        }
+
+        private var syncScheduled = false
+
+        @objc private func storageDidProcessEditing(_ notification: Notification) {
+            guard let storage = notification.object as? NSTextStorage,
+                  storage.editedMask.contains(.editedCharacters), !syncScheduled else { return }
+            // Not now: the storage is still inside its edit, and styling it
+            // from here isn't allowed. Typing has already synced by the time
+            // this runs and costs one comparison; undo hasn't.
+            syncScheduled = true
+            DispatchQueue.main.async { [weak self] in
+                self?.syncScheduled = false
+                self?.syncFromStorage()
+            }
+        }
+
+        /// Brings the document, the focus paragraph and the styling up to
+        /// date with whatever the storage holds now.
+        func syncFromStorage() {
+            guard let textView, !textView.hasMarkedText() else { return }
+            let current = textView.string
+            let changed = !(current as NSString).isEqual(to: parent.text)
+            guard changed || styler.hasPendingEdit else { return }
+            if changed { parent.text = current }
+            _ = updateFocusParagraph()
+            restyle(onlyEdited: true)
+        }
+
         deinit {
             NotificationCenter.default.removeObserver(self)
         }
@@ -169,10 +215,7 @@ struct MarkdownEditor: NSViewRepresentable {
         }
 
         func textDidChange(_ notification: Notification) {
-            guard let textView, !textView.hasMarkedText() else { return }
-            parent.text = textView.string
-            _ = updateFocusParagraph()
-            restyle(onlyEdited: true)
+            syncFromStorage()
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {

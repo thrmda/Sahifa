@@ -281,6 +281,17 @@ final class AppModel: ObservableObject {
         sourceBookmarks[id] = nil
         sources.remove(at: index)
         childrenByDirectory = childrenByDirectory.filter { $0.key.sourceID != id }
+        // Its open documents go too: left cached, they kept autosaving (with
+        // the old token, for a repository) and a second model turned up for
+        // the same file when the folder was added again. Each lands its
+        // unsaved text first; the task holds it alive until then.
+        let root = DocumentID(sourceID: id, path: "")
+        for key in documentCache.keys where key.sourceID == id {
+            if let document = documentCache.removeValue(forKey: key) {
+                Task { await document.flush() }
+            }
+        }
+        documentMoved.send((from: root, to: nil))
         if source.kind == .looseFiles {
             looseFiles = []
             unavailableLooseBookmarks = []
@@ -319,7 +330,13 @@ final class AppModel: ObservableObject {
             return
         }
         guard let store = store(for: id.sourceID) as? LocalFileStore else { return }
-        childrenByDirectory[id] = store.childrenImmediately(of: id)
+        if let nodes = store.childrenIfReadable(of: id) {
+            childrenByDirectory[id] = nodes
+        } else if childrenByDirectory[id] == nil {
+            childrenByDirectory[id] = []
+        }
+        // Otherwise the folder couldn't be read just now: keep what was
+        // listed rather than showing it empty and closing its tabs.
     }
 
     /// Fetches a remote folder. Only one request per folder is in flight, and
@@ -338,9 +355,16 @@ final class AppModel: ObservableObject {
                 guard let self else { return }
                 // A refused credential is an account problem, not a folder
                 // problem — say so on the account so every source reflects it.
+                // A 403 is this repository refusing (an organisation's rules,
+                // a token scoped elsewhere), which says nothing about the
+                // token's other repositories.
                 if case RemoteStoreError.notAuthorised = error {
                     GitHubAccount.shared.markRefused()
                     self.markNeedsSignIn(sourceID: id.sourceID)
+                }
+                // GitHub lists at most 1,000 entries: show those, and say so.
+                if case RemoteStoreError.partialListing(let nodes) = error {
+                    self.childrenByDirectory[id] = nodes
                 }
                 self.directoryErrors[id] = error.localizedDescription
                 self.loadingDirectories.remove(id)
@@ -367,6 +391,11 @@ final class AppModel: ObservableObject {
     }
 
     private func accountChanged(_ state: GitHubAccount.State) {
+        // Whether files can be created in a repository follows the credential,
+        // and nothing below changes a published value for a public repository
+        // that was browsed fine without one: New File stayed greyed out after
+        // connecting, and enabled after disconnecting.
+        objectWillChange.send()
         let remote = Set(sources.filter { $0.kind == .gitHub }.map(\.id))
         for (id, document) in documentCache where remote.contains(id.sourceID) {
             if let store = store(for: id.sourceID) { document.replaceStore(store) }
@@ -467,7 +496,7 @@ final class AppModel: ObservableObject {
         // Local folders only: re-reading every remote folder on each app
         // switch would burn requests for no reason.
         for id in childrenByDirectory.keys
-        where source(id.sourceID)?.kind == .localFolder {
+        where source(id.sourceID)?.kind == .localFolder && source(id.sourceID)?.status == .ready {
             loadChildren(of: id, force: true)
         }
         refreshLooseFiles()
@@ -772,8 +801,8 @@ final class AppModel: ObservableObject {
         monitors[id]?.stop()
         monitors[id] = DirectoryWatcher(
             root: root,
-            onChange: { [weak self] directories in
-                self?.directoriesChanged(directories, in: id)
+            onChange: { [weak self] directories, includesSubfolders in
+                self?.directoriesChanged(directories, includesSubfolders: includesSubfolders, in: id)
             },
             onRootLost: { [weak self] in
                 guard let self, let index = self.sources.firstIndex(where: { $0.id == id })
@@ -788,10 +817,21 @@ final class AppModel: ObservableObject {
     /// Reloads only the directories the sidebar has actually read. A change
     /// deep inside a folder nobody has expanded needs no work — it will be
     /// read correctly whenever it is first opened.
-    private func directoriesChanged(_ directories: [URL], in sourceID: UUID) {
+    private func directoriesChanged(_ directories: [URL], includesSubfolders: Bool = false,
+                                    in sourceID: UUID) {
         guard let source = source(sourceID) else { return }
         for directory in directories {
             guard let id = source.documentID(for: directory) else { continue }
+            // FSEvents lost track of what changed below here: re-read every
+            // folder of it that is on screen, not just this one.
+            if includesSubfolders {
+                for loaded in childrenByDirectory.keys where loaded.isWithin(id) && loaded != id {
+                    loadChildren(of: loaded, force: true)
+                }
+                for (key, document) in documentCache where key.isWithin(id) {
+                    document.reconcileWithDisk()
+                }
+            }
             // Open documents in a changed folder pick up edits made by other
             // programs now, not only when the app next comes to the front.
             for (key, document) in documentCache where key.parent == id {
@@ -910,8 +950,10 @@ final class AppModel: ObservableObject {
                     continue
                 }
                 sourceBookmarks[record.id] = bookmark
+                // The name follows the folder: renamed in Finder, it came
+                // back under its old name on every launch.
                 var source = Source(id: record.id, kind: .localFolder,
-                                    name: record.name, rootURL: url)
+                                    name: url.lastPathComponent, rootURL: url)
                 source.status = FileManager.default.fileExists(atPath: url.path)
                     ? .ready : .missing
                 sources.append(source)
@@ -1069,7 +1111,14 @@ final class AppModel: ObservableObject {
             forgetRecent(item)
             return
         }
+        // Something already listed has its own grant; this one would only
+        // pile up (a sandboxed app has a limit on open scopes).
+        let standardized = url.standardizedFileURL
+        let listed = sources.contains { $0.rootURL?.standardizedFileURL == standardized }
+            || looseFiles.contains { $0.standardizedFileURL == standardized }
+            || sources.contains { $0.kind == .localFolder && $0.documentID(for: url) != nil }
         openExternal([url])
+        if listed { url.stopAccessingSecurityScopedResource() }
     }
 
     func clearRecents() {

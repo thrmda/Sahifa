@@ -54,7 +54,7 @@ on disk.
   weight heavier rather than sloped. Latin emphasis stays a true italic, in
   the editor, the preview and the PDF alike.
 - **Readable link colour.** Link text clears WCAG AA against both the paper
-  and the sand backgrounds, in light and dark; warnings and errors have their
+  and the panel backgrounds, in light and dark; warnings and errors have their
   own colour rather than borrowing the link's.
 - **GitHub repositories.** Add a repository from the File menu and browse its
   Markdown alongside your local folders — files are fetched as you open them,
@@ -188,7 +188,8 @@ Sahifa/                 app sources (SwiftUI shell + TextKit 2 editor)
   Export/               Markdown→HTML renderer, HTML/PDF export, Arabic PDF
                         text-layer repair
   Models/               sources, tree, document store, document (autosave, bookmarks)
-  Views/                sidebar, format bar, status bar, preview, settings
+  Tabular/              CSV/TSV parsing, the table view, Markdown-table bridge
+  Views/                sidebar, tab bar, format bar, status bar, preview, settings
   Assets.xcassets       brand colors (light/dark) + app icon
   Localizable.xcstrings en / ar string catalog
 Brand/                  brand kit; Brand/fonts holds the bundled IBM Plex OTFs
