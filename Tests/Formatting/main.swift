@@ -352,6 +352,14 @@ func run() {
         view.setSelectedRange(NSRange(location: 0, length: 0))
         view.insertText("# ", replacementRange: NSRange(location: 0, length: 0))
         check("typing reaches the binding", box.text == "# Title\n\nBody", box.text)
+        // A person can't undo in the same run-loop turn as the keystroke, and
+        // on macOS 26 the typed text isn't undoable until the turn ends.
+        let undoableAtOnce = view.undoManager?.canUndo == true
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        view.breakUndoCoalescing()
+        print("note  undo manager \(view.undoManager == nil ? "missing" : "present"), "
+              + "undoable at once: \(undoableAtOnce), after a turn: \(view.undoManager?.canUndo == true), "
+              + "TextKit 2: \(view.textLayoutManager != nil)")
         view.undoManager?.undo()
         RunLoop.main.run(until: Date().addingTimeInterval(0.1))
         check("undo reaches the binding", box.text == "Title\n\nBody", box.text)
