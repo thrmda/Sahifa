@@ -190,14 +190,78 @@ final class MarkdownStyler {
     /// How much of the document the last restyle went over. For tests.
     private(set) var lastRestyledLength = 0
 
-    /// A link reference definition, at the start of a line. Any "]:" used to
-    /// count, so `arr[i]:` in a code block put every keystroke on the slow
-    /// path.
-    private static let referenceDefinition = try! NSRegularExpression(
-        pattern: #"(?m)^ {0,3}\[[^\]\r\n]+\]:"#)
+    /// A line that may begin a link reference definition, at the top level
+    /// or inside a quote or list, capturing its label (which may run over
+    /// a line break). Any "]:" used to count, so `arr[i]:` in a code block
+    /// put every keystroke on the slow path.
+    private static let definitionCandidate = try! NSRegularExpression(
+        pattern: #"(?m)^[ \t>*+\-\d.)]*\[([^\]]{1,999})\]:"#)
 
-    static func hasReferenceDefinition(_ text: NSString) -> Bool {
-        referenceDefinition.firstMatch(in: text as String, range: NSRange(location: 0, length: text.length)) != nil
+    /// Blocks whose leading lines can be link reference definitions: cmark
+    /// strips them from the start of a paragraph, or of the paragraph a
+    /// setext underline turns into a heading, yet reports the block as
+    /// beginning where they began.
+    private static let strippingKinds: Set<ObjectIdentifier> = [
+        ObjectIdentifier(Paragraph.self), ObjectIdentifier(Heading.self),
+    ]
+    /// Other blocks that can't hold one: a `[x]:` line inside is code or data.
+    private static let leafKinds: Set<ObjectIdentifier> = [
+        ObjectIdentifier(CodeBlock.self), ObjectIdentifier(HTMLBlock.self),
+        ObjectIdentifier(ThematicBreak.self), ObjectIdentifier(Table.self),
+    ]
+
+    /// The link reference definitions within `region` of `text`, given its
+    /// top-level blocks in order: each label with the span of text that
+    /// defines it. A definition leaves no block behind, and nothing but
+    /// blank lines does, so a candidate line between two blocks is one; at
+    /// the start of a paragraph it is one if cmark stripped it. nil when a
+    /// candidate sits inside a quote or list, where only a full parse can
+    /// tell.
+    private static func definitions(in text: NSString, within region: NSRange,
+                                    blocks: [Block]) -> [(label: String, span: NSRange)]? {
+        var found: [(label: String, span: NSRange)] = []
+        var index = 0
+        for match in definitionCandidate.matches(in: text as String, range: region) {
+            let at = match.range.location
+            let label = text.substring(with: match.range(at: 1))
+            while index < blocks.count, NSMaxRange(blocks[index].range) <= at { index += 1 }
+            if index < blocks.count, blocks[index].range.location <= at {
+                let block = blocks[index]
+                if leafKinds.contains(block.kind) { continue }
+                guard strippingKinds.contains(block.kind) else { return nil }
+                guard let stripped = strippedDefinitions(of: text.substring(with: block.range) as NSString,
+                                                         holding: at - block.range.location) else { continue }
+                found.append((label, NSRange(location: block.range.location, length: stripped)))
+                continue
+            }
+            let start = index > 0 ? NSMaxRange(blocks[index - 1].range) : 0
+            let end = index < blocks.count ? blocks[index].range.location : text.length
+            found.append((label, NSRange(location: start, length: end - start)))
+        }
+        return found
+    }
+
+    /// The length of the definitions cmark stripped from the start of a
+    /// paragraph's text, when the line at `offset` is among them, else nil.
+    /// cmark takes definitions from the start for as long as they parse,
+    /// and a text that is nothing but definitions parses to nothing, so the
+    /// longest prefix of lines that parses to nothing is what it stripped.
+    /// A definition runs over three lines at most (label, destination,
+    /// title), so a few lines past `offset` settle it.
+    private static func strippedDefinitions(of text: NSString, holding offset: Int) -> Int? {
+        var stripped = 0
+        var lineEnd = 0
+        var line = 0
+        var target: Int?
+        while lineEnd < text.length, target.map({ line < $0 + 3 }) ?? true {
+            let range = text.lineRange(for: NSRange(location: lineEnd, length: 0))
+            if target == nil, NSLocationInRange(offset, range) { target = line }
+            lineEnd = NSMaxRange(range)
+            line += 1
+            if Document(parsing: text.substring(to: lineEnd)).childCount == 0 { stripped = lineEnd }
+        }
+        guard let target, target < line, stripped > offset else { return nil }
+        return stripped
     }
 
     /// Builds the styled document and its top-level blocks from scratch.
@@ -276,13 +340,16 @@ final class MarkdownStyler {
         }
 
         // A link reference definition is read by every link that names it,
-        // wherever that is.
+        // wherever that is: an edit that changes which labels are defined
+        // can change a link anywhere, so only a full rebuild is safe then.
+        // Typing in a definition's URL defines the same labels, and that
+        // used to rebuild everything on every keystroke.
         if parsesMarkdown {
             let oldDirty = NSRange(location: dirty.location, length: dirty.length - delta)
-            if Self.hasReferenceDefinition(new.substring(with: dirty) as NSString)
-                || Self.hasReferenceDefinition(old.substring(with: oldDirty) as NSString) {
-                return nil
-            }
+            guard let was = Self.definitions(in: old, within: oldDirty, blocks: cachedBlocks),
+                  let now = Self.definitions(in: new, within: dirty, blocks: blocks.map(\.block)),
+                  was.map(\.label) == now.map(\.label)
+            else { return nil }
         }
 
         base.replaceCharacters(in: edit.range, with: new.substring(with: NSRange(location: edit.range.location,
@@ -401,20 +468,54 @@ final class MarkdownStyler {
                               reach: Int) -> (blocks: [ParsedBlock], complete: Bool) {
         let old = cachedBlocks
         let delta = edit.newLength - edit.range.length
-        func parse(_ window: NSRange) -> [ParsedBlock] {
-            let map = SourceMap(text: new.substring(with: window), offset: window.location)
-            return Self.topLevelBlocks(of: Document(parsing: new.substring(with: window)), map: map,
-                                       length: new.length)
-        }
         func shifted(_ block: Block) -> Block {
             Block(range: NSRange(location: block.range.location + delta, length: block.range.length),
                   kind: block.kind)
         }
+        func parseWhole() -> (blocks: [ParsedBlock], complete: Bool) {
+            let map = SourceMap(text: new as String)
+            return (Self.topLevelBlocks(of: Document(parsing: new as String), map: map, length: new.length), true)
+        }
 
-        // A link reference definition counts wherever it is, so a window
-        // that left it out would parse its links differently.
-        guard !Self.hasReferenceDefinition(new) else {
-            return (parse(NSRange(location: 0, length: new.length)), true)
+        // A link reference definition counts wherever it is, so the ones
+        // outside the window are parsed along with it, each on the side of
+        // the window it sits on: a window that left them out would parse
+        // its links differently, and a fence left open in the window runs
+        // over whatever follows it, as it does in the document. Blocks
+        // after the edit sit `delta` further along in the new text.
+        let current = old.map { $0.range.location >= NSMaxRange(edit.range) ? shifted($0) : $0 }
+        func parse(_ window: NSRange) -> [ParsedBlock]? {
+            let windowEnd = NSMaxRange(window)
+            var sides: [String] = []
+            for region in [NSRange(location: 0, length: window.location),
+                           NSRange(location: windowEnd, length: new.length - windowEnd)] {
+                var spans: [NSRange] = []
+                if region.length > 0 {
+                    guard let outside = Self.definitions(in: new, within: region, blocks: current) else { return nil }
+                    for definition in outside {
+                        let span = NSIntersectionRange(definition.span, region)
+                        if spans.last != span { spans.append(span) }
+                    }
+                }
+                sides.append(spans.map { new.substring(with: $0) }.joined(separator: "\n\n"))
+            }
+            let prefix = sides[0].isEmpty ? "" : sides[0] + "\n\n"
+            let suffix = sides[1].isEmpty ? "" : "\n\n" + sides[1]
+            let text = prefix + new.substring(with: window) + suffix
+            let start = window.location - (prefix as NSString).length
+            let map = SourceMap(text: text, offset: start)
+            let blocks = Self.topLevelBlocks(of: Document(parsing: text), map: map,
+                                             length: start + (text as NSString).length)
+            guard !prefix.isEmpty || !suffix.isEmpty else { return blocks }
+            // The definitions leave no blocks of their own; a block that
+            // ran on into them ends with the window, as it would have.
+            return blocks.compactMap { block in
+                guard block.block.range.location >= window.location, block.block.range.location < windowEnd
+                    || block.block.range.length == 0 && block.block.range.location == windowEnd else { return nil }
+                var clamped = block
+                clamped.block.range.length = min(clamped.block.range.length, windowEnd - clamped.block.range.location)
+                return clamped
+            }
         }
 
         // The block just before the edit can run on into it (a paragraph
@@ -433,7 +534,8 @@ final class MarkdownStyler {
             let windowEnd = end < old.count
                 ? new.lineRange(for: NSRange(location: old[end].range.location + delta, length: 0)).location
                 : new.length
-            let window = parse(NSRange(location: windowStart, length: windowEnd - windowStart))
+            guard let window = parse(NSRange(location: windowStart, length: windowEnd - windowStart))
+            else { return parseWhole() }
             // Back in step: the window's last block is the one the last parse
             // had there, so everything from there on parses as it did.
             if end == old.count || (end > after && window.last?.block == shifted(old[end - 1])) {

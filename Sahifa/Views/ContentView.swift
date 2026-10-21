@@ -111,12 +111,15 @@ struct ContentView: View {
                 // a .navigation-placed item would strand this on the physical
                 // left, opposite the sidebar. Placing it trailing, and last in
                 // the group, keeps it at the top-right corner over the sidebar.
+                // Same wording as the View menu item, so the two read as one
+                // command with one key.
                 Button {
                     withAnimation { windowState.sidebarVisible.toggle() }
                 } label: {
-                    Label("Toggle Sidebar", systemImage: "sidebar.leading")
+                    Label(windowState.sidebarVisible ? "Hide Sidebar" : "Show Sidebar",
+                          systemImage: "sidebar.leading")
                 }
-                .help(Text("Toggle Sidebar"))
+                .help(Text(windowState.sidebarVisible ? "Hide Sidebar" : "Show Sidebar"))
             }
         }
     }

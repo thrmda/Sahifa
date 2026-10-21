@@ -32,8 +32,8 @@ struct StatusBarView: View {
                 Image(systemName: "sidebar.leading")
             }
             .buttonStyle(.borderless)
-            .help(Text("Toggle Sidebar"))
-            .accessibilityLabel(Text("Toggle Sidebar"))
+            .help(Text(windowState.sidebarVisible ? "Hide Sidebar" : "Show Sidebar"))
+            .accessibilityLabel(Text(windowState.sidebarVisible ? "Hide Sidebar" : "Show Sidebar"))
             .pointerCursor(.pointingHand)
             if kind.isTable {
                 Text("Rows: \(counts?.rows ?? 0)")

@@ -805,13 +805,50 @@ final class AppModel: ObservableObject {
                 self?.directoriesChanged(directories, includesSubfolders: includesSubfolders, in: id)
             },
             onRootLost: { [weak self] in
-                guard let self, let index = self.sources.firstIndex(where: { $0.id == id })
-                else { return }
-                let path = self.sources[index].rootURL?.path
-                self.sources[index].status =
-                    (path.map { FileManager.default.fileExists(atPath: $0) } ?? false)
-                    ? .ready : .missing
+                self?.rootChanged(for: id)
             })
+    }
+
+    /// The root folder of a local source was renamed, moved, deleted or
+    /// unmounted. Its bookmark still finds a folder that was renamed or
+    /// moved, so the source follows it: the watcher, the listing and the
+    /// store behind each open document move to the new path, and the name
+    /// follows the folder. Until now the old path was watched on, and the
+    /// sidebar showed the old name, until the next launch. A folder that is
+    /// gone, or in the Trash, is missing until it comes back.
+    func rootChanged(for id: UUID) {
+        guard let index = sources.firstIndex(where: { $0.id == id }),
+              sources[index].kind == .localFolder else { return }
+        let old = sources[index].rootURL
+        if let bookmark = sourceBookmarks[id], let url = resolveBookmark(bookmark),
+           url.resolvingSymlinksInPath().path != old?.resolvingSymlinksInPath().path,
+           FileManager.default.fileExists(atPath: url.path), !Self.isInTrash(url) {
+            sources[index].rootURL = url
+            sources[index].name = url.lastPathComponent
+            sources[index].status = .ready
+            startMonitor(for: sources[index])
+            persistSources()
+            // Open documents keep their text and edits; they save to the
+            // folder's new place from now on.
+            if let store = store(for: id) {
+                for (key, document) in documentCache where key.sourceID == id {
+                    document.replaceStore(store)
+                }
+            }
+            for key in childrenByDirectory.keys where key.sourceID == id {
+                loadChildren(of: key, force: true)
+            }
+            return
+        }
+        let path = sources[index].rootURL?.path
+        sources[index].status = (path.map { FileManager.default.fileExists(atPath: $0) } ?? false)
+            ? .ready : .missing
+    }
+
+    /// A folder moved to the Trash is gone as far as the sidebar is
+    /// concerned, even though its bookmark still finds it there.
+    private static func isInTrash(_ url: URL) -> Bool {
+        url.standardizedFileURL.pathComponents.contains { $0 == ".Trash" || $0 == ".Trashes" }
     }
 
     /// Reloads only the directories the sidebar has actually read. A change
@@ -1001,7 +1038,10 @@ final class AppModel: ObservableObject {
     private func startWatchingAndReadSourcesSoon() {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            for source in self.sources where source.kind == .localFolder {
+            // Only the restored ones: a folder added in the meantime has
+            // its watcher already, and replacing it drops whatever that
+            // one was about to report.
+            for source in self.sources where source.kind == .localFolder && self.monitors[source.id] == nil {
                 self.startMonitor(for: source)
             }
             for source in self.sources {

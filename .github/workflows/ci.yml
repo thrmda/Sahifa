@@ -1,0 +1,45 @@
+# Builds the app and runs every suite in scripts/ on a macOS runner.
+#
+# The write-back suite (scripts/test-github-write.sh) only runs when the
+# repository defines the variable SAHIFA_TEST_REPO (owner/name of a scratch
+# repository) and the secret SAHIFA_TEST_TOKEN (a fine-grained token with
+# contents read and write on that one repository). Without them it reports
+# SKIP, and pull requests from forks never see the secret.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use the newest Xcode on the runner
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
+          xcodebuild -version
+          sw_vers
+
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: build/DerivedData/SourcePackages
+          key: spm-${{ runner.os }}-${{ hashFiles('Sahifa.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+
+      - name: Build and run every suite
+        run: scripts/test-all.sh
+        env:
+          SAHIFA_TEST_REPO: ${{ vars.SAHIFA_TEST_REPO }}
+          SAHIFA_TEST_TOKEN: ${{ secrets.SAHIFA_TEST_TOKEN }}

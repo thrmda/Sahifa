@@ -1,4 +1,5 @@
 import AppKit
+import Markdown
 import SwiftUI
 
 var failures = 0
@@ -351,6 +352,14 @@ func run() {
         view.setSelectedRange(NSRange(location: 0, length: 0))
         view.insertText("# ", replacementRange: NSRange(location: 0, length: 0))
         check("typing reaches the binding", box.text == "# Title\n\nBody", box.text)
+        // A person can't undo in the same run-loop turn as the keystroke, and
+        // on macOS 26 the typed text isn't undoable until the turn ends.
+        let undoableAtOnce = view.undoManager?.canUndo == true
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        view.breakUndoCoalescing()
+        print("note  undo manager \(view.undoManager == nil ? "missing" : "present"), "
+              + "undoable at once: \(undoableAtOnce), after a turn: \(view.undoManager?.canUndo == true), "
+              + "TextKit 2: \(view.textLayoutManager != nil)")
         view.undoManager?.undo()
         RunLoop.main.run(until: Date().addingTimeInterval(0.1))
         check("undo reaches the binding", box.text == "Title\n\nBody", box.text)
@@ -414,8 +423,91 @@ func run() {
                                   with: NSAttributedString(string: "y", attributes: styler.baseAttributes()))
         styler.restyleEdited(storage)
         check("a bracket-colon in code does not force a full restyle", styler.fullRebuilds == rebuilds)
-        check("…while a real definition is recognised",
-              MarkdownStyler.hasReferenceDefinition("text\n\n[ref]: https://e.com") && !MarkdownStyler.hasReferenceDefinition("arr[i]: x"))
+    }
+
+    // Reference-style links: the definitions are read by links anywhere, and
+    // used to put the whole document through the parser on every keystroke.
+    // Now they are parsed along with the window around the edit; only an
+    // edit that changes which labels are defined rebuilds everything.
+    do {
+        var long = "Read [the guide][guide] and [the notes][notes].\n\n"
+        for i in 0..<60 {
+            long += "## Section \(i)\n\nProse with a [link][guide] and `code`.\n\n- one\n- two\n\nفقرة \(i).\n\n"
+        }
+        long += "[guide]: https://example.com/guide\n[notes]: https://example.com/notes \"Notes\"\n"
+        let styler = MarkdownStyler()
+        styler.theme = EditorTheme(fontSize: 16, lineHeightMultiple: 1.4)
+        let storage = NSTextStorage(string: long)
+        styler.observeEdits(of: storage)
+        styler.restyle(storage)
+        let ns = { storage.string as NSString }
+        func type(_ text: String, at location: Int) {
+            storage.replaceCharacters(in: NSRange(location: location, length: 0),
+                                      with: NSAttributedString(string: text, attributes: styler.baseAttributes()))
+            styler.restyleEdited(storage)
+        }
+        func matchesFullRestyle() -> Bool {
+            let fresh = NSTextStorage(string: storage.string)
+            let reference = MarkdownStyler()
+            reference.theme = styler.theme
+            reference.restyle(fresh)
+            return fresh.isEqual(to: storage)
+        }
+        var rebuilds = styler.fullRebuilds
+        let middle = ns().range(of: "Prose", options: [], range: NSRange(location: ns().length / 2, length: ns().length / 2)).location
+        for typed in ["x", "\n\n", "[link][guide]", "[none][missing]"] { type(typed, at: middle) }
+        check("typing in a document with reference definitions restyles only around the edit",
+              styler.fullRebuilds == rebuilds, "\(styler.fullRebuilds - rebuilds) full rebuilds")
+        check("…and links there resolve against definitions outside the parsed window", matchesFullRestyle())
+        let linkAt = ns().range(of: "[link][guide]", options: [], range: NSRange(location: middle, length: 60)).location
+        check("…a reference link is styled as a link",
+              storage.attribute(.underlineStyle, at: linkAt + 1, effectiveRange: nil) != nil)
+        let missingAt = ns().range(of: "[none][missing]").location
+        check("…and one with no definition is not",
+              storage.attribute(.underlineStyle, at: missingAt + 1, effectiveRange: nil) == nil)
+
+        rebuilds = styler.fullRebuilds
+        type("x", at: NSMaxRange(ns().range(of: "example.com/guide")))
+        check("typing in a definition's URL does not rebuild everything",
+              styler.fullRebuilds == rebuilds && matchesFullRestyle())
+
+        rebuilds = styler.fullRebuilds
+        type("x", at: ns().range(of: "[guide]: https").location + 1)
+        check("changing a definition's label rebuilds everything", styler.fullRebuilds == rebuilds + 1)
+        check("…so links that lost their definition are plain again", matchesFullRestyle())
+        type("x", at: ns().range(of: "[notes]: https").location + 1)
+        type("\n\nAfter.", at: ns().length)
+        check("…and the document stays exact once no definition is left", matchesFullRestyle())
+
+        // A definition inside a quote only a full parse can place.
+        type("\n\n> [quoted]: https://example.com/q\n\n", at: 0)
+        type("y", at: middle + 40)
+        check("a definition inside a quote stays exact", matchesFullRestyle())
+
+        // Parsing the whole document on every keystroke cost a full parse
+        // each; the window around the edit costs a fraction of one. Measured
+        // against a parse of the same text, so the machine's speed and load
+        // fall out.
+        var big = ""
+        while big.utf8.count < 300_000 { big += long }
+        let bigStyler = MarkdownStyler()
+        bigStyler.theme = styler.theme
+        let bigStorage = NSTextStorage(string: big)
+        bigStyler.observeEdits(of: bigStorage)
+        bigStyler.restyle(bigStorage)
+        let at = (big as NSString).range(of: "Prose", options: [], range: NSRange(location: big.utf16.count / 2, length: big.utf16.count / 2)).location
+        let started = Date()
+        for i in 0..<20 {
+            bigStorage.replaceCharacters(in: NSRange(location: at + i, length: 0),
+                                         with: NSAttributedString(string: "x", attributes: bigStyler.baseAttributes()))
+            bigStyler.restyleEdited(bigStorage)
+        }
+        let elapsed = Date().timeIntervalSince(started)
+        let parsing = Date()
+        for _ in 0..<20 { _ = Document(parsing: bigStorage.string) }
+        let fullParses = Date().timeIntervalSince(parsing)
+        check("20 keystrokes in a 300 KB document with reference definitions cost under half of 20 full parses",
+              elapsed < fullParses / 2, String(format: "%.2f s against %.2f s", elapsed, fullParses))
     }
 
     // A rule and a table in a CRLF file keep its line endings, with no
@@ -493,7 +585,7 @@ func run() {
                                                   (4, true, false), (5, true, false), (6, false, true)] {
             var generator = SeededGenerator(seed: UInt64(seedValue))
             let snippets = references ? snippets : snippets.filter { !$0.contains("]:") }
-            let styler = MarkdownStyler()
+            var styler = MarkdownStyler()
             styler.theme = EditorTheme(fontSize: 16, lineHeightMultiple: 1.4)
             styler.parsesMarkdown = markdown
             let storage = NSTextStorage(string: references ? seed : plain)
@@ -524,6 +616,14 @@ func run() {
                 if !fresh.isEqual(to: storage) {
                     mismatches += 1
                     if firstMismatch.isEmpty { firstMismatch = "seed \(seedValue), step \(step)" }
+                    // Start over with a fresh styler: the patched one's cache
+                    // is what went wrong, and restyling from it kept the
+                    // mismatch for every step after.
+                    styler = MarkdownStyler()
+                    styler.theme = reference.theme
+                    styler.parsesMarkdown = markdown
+                    styler.focusParagraph = reference.focusParagraph
+                    styler.observeEdits(of: storage)
                     styler.restyle(storage)
                 }
             }
@@ -777,6 +877,52 @@ func run() {
         check("…in a single change", elapsed < 2, String(format: "%.2f s", elapsed))
         e.undoManager?.undo()
         check("…undone in one step", e.string == lines)
+    }
+
+    // MARK: Long tail (2026-10-21)
+
+    // Japanese and other composed input: while a character is being put
+    // together (marked text), focus mode restyles on every selection change.
+    // That must leave the composition alone, and the document gets the text
+    // only once it is confirmed.
+    do {
+        let (view, box, coordinator) = makeCoordinatedEditor("Title\n\nBody\n\nMore")
+        coordinator.focusMode = true
+        _ = coordinator.updateFocusParagraph()
+        coordinator.restyle()
+        let at = (view.string as NSString).range(of: "Body").location + 4
+        view.setSelectedRange(NSRange(location: at, length: 0))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        let fullRebuilds = coordinator.styler.fullRebuilds
+        view.setMarkedText("か", selectedRange: NSRange(location: 1, length: 0),
+                           replacementRange: NSRange(location: NSNotFound, length: 0))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        check("a composition in progress is marked",
+              view.hasMarkedText() && view.markedRange() == NSRange(location: at, length: 1),
+              NSStringFromRange(view.markedRange()))
+        check("…and not yet in the document", box.text == "Title\n\nBody\n\nMore", box.text)
+        view.setMarkedText("かん", selectedRange: NSRange(location: 2, length: 0),
+                           replacementRange: NSRange(location: NSNotFound, length: 0))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        check("…a longer composition stays marked",
+              view.hasMarkedText() && view.markedRange() == NSRange(location: at, length: 2),
+              NSStringFromRange(view.markedRange()))
+        view.insertText("漢", replacementRange: NSRange(location: NSNotFound, length: 0))
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        check("confirming the composition puts it in the document",
+              !view.hasMarkedText() && box.text == "Title\n\nBody漢\n\nMore", box.text)
+        check("…without restyling everything", coordinator.styler.fullRebuilds == fullRebuilds,
+              "\(coordinator.styler.fullRebuilds - fullRebuilds) full rebuilds")
+        let fresh = NSTextStorage(string: view.string)
+        let reference = MarkdownStyler()
+        reference.theme = coordinator.styler.theme
+        reference.focusParagraph = coordinator.styler.focusParagraph
+        reference.restyle(fresh)
+        check("…and the styling is exact", fresh.isEqual(to: view.textStorage!))
+        let dim = view.textStorage!.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+        let focus = view.textStorage!.attribute(.foregroundColor, at: at, effectiveRange: nil) as? NSColor
+        check("…with the composed paragraph in focus and the title dimmed",
+              dim.map { $0.alphaComponent < 1 } == true && focus.map { $0.alphaComponent == 1 } == true)
     }
 }
 

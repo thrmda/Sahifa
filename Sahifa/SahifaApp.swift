@@ -229,7 +229,8 @@ struct SahifaCommands: Commands {
             .disabled(windowState == nil)
             // Radio group (inline picker → checkmarked items) so the menu
             // shows which layout is current, not just a single on/off toggle.
-            // ⇧⌘P advances through the three, keeping the old preview shortcut.
+            // Cycle View has no key: ⇧⌘P is Page Setup everywhere else on
+            // the Mac, and the status bar switches modes with one click.
             Picker("View", selection: Binding(
                 get: { windowState?.activeViewMode ?? .editOnly },
                 set: { windowState?.activeViewMode = $0 }
@@ -250,15 +251,17 @@ struct SahifaCommands: Commands {
                     windowState.activeViewMode = modes[next]
                 }
             }
-            .keyboardShortcut("p", modifiers: [.command, .shift])
             .disabled(windowState == nil)
             Button(focusMode ? "Exit Focus Mode" : "Focus Mode") {
                 focusMode.toggle()
             }
             .keyboardShortcut("f", modifiers: [.command, .shift])
+            // ⌥⌘T is the Mac key for showing and hiding a window's toolbar;
+            // the format bar is the only toolbar this window lets you hide.
             Button(showFormatBar ? "Hide Format Bar" : "Show Format Bar") {
                 showFormatBar.toggle()
             }
+            .keyboardShortcut("t", modifiers: [.command, .option])
         }
         CommandMenu("Format") {
             // Every item here works on Markdown source. In a CSV file it would
@@ -280,14 +283,19 @@ struct SahifaCommands: Commands {
                 Button("Heading 4") { send(#selector(BidiTextView.sahifaHeading4(_:))) }
                     .keyboardShortcut("4", modifiers: .command)
                 Divider()
+                // The list items have no keys: Google Docs and Apple Notes
+                // disagree on which digit means which, so neither feels right.
                 Button("Bulleted List") { send(#selector(BidiTextView.sahifaToggleBulletList(_:))) }
-                    .keyboardShortcut("8", modifiers: [.command, .shift])
                 Button("Numbered List") { send(#selector(BidiTextView.sahifaToggleNumberedList(_:))) }
-                    .keyboardShortcut("7", modifiers: [.command, .shift])
+                // ⌘` is "next window" and ⇧⌘Q logs out, so the code keys take
+                // Option; ⇧⌘M is Notes' key for monospaced text.
                 Button("Quote") { send(#selector(BidiTextView.sahifaToggleQuote(_:))) }
+                    .keyboardShortcut("q", modifiers: [.command, .option])
                 Divider()
                 Button("Inline Code") { send(#selector(BidiTextView.sahifaToggleInlineCode(_:))) }
+                    .keyboardShortcut("m", modifiers: [.command, .shift])
                 Button("Code Block") { send(#selector(BidiTextView.sahifaInsertCodeBlock(_:))) }
+                    .keyboardShortcut("c", modifiers: [.command, .option])
                 Divider()
                 Button("Link") { send(#selector(BidiTextView.sahifaInsertLink(_:))) }
                     .keyboardShortcut("k", modifiers: .command)

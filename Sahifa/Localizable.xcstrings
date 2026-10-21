@@ -1002,16 +1002,6 @@
         }
       }
     },
-    "Toggle Sidebar": {
-      "localizations": {
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "إظهار/إخفاء الشريط الجانبي"
-          }
-        }
-      }
-    },
     "Try Again": {
       "localizations": {
         "ar": {
