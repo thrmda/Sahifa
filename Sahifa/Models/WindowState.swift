@@ -59,7 +59,7 @@ final class WindowState: ObservableObject {
     }
 
     /// The layout for whatever this window is showing — what the status bar,
-    /// the View menu and ⇧⌘P read and change.
+    /// the View menu and Cycle View read and change.
     var activeViewMode: ViewMode {
         get { document?.kind.isTable == true ? tableViewMode : viewMode }
         set {

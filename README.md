@@ -1,5 +1,7 @@
 # صحيفة · Sahifa
 
+[![CI](https://github.com/thrmda/Sahifa/actions/workflows/ci.yml/badge.svg)](https://github.com/thrmda/Sahifa/actions/workflows/ci.yml)
+
 A calm, native macOS Markdown editor where English and Arabic are **equal
 citizens** on one page. Two scripts, two directions, one surface. Plain text
 on disk.
@@ -23,7 +25,7 @@ on disk.
   keeps its scroll position; editor and preview scroll in sync. Every block
   carries its own resolved direction so the preview mirrors the editor's
   per-paragraph bidi exactly. Three view modes — editor only, both, preview
-  only — from the status bar, the View menu, or ⇧⌘P to cycle.
+  only — from the status bar or the View menu.
 - **Export to HTML & PDF.** Self-contained HTML with IBM Plex embedded as
   `data:` URIs (no missing fonts on other machines), and paginated A4 PDF with
   a light “paper” palette. Arabic text in the PDF copies out as clean logical
@@ -31,8 +33,8 @@ on disk.
 - **Formatting without leaving the keyboard.** A full **Format** menu — bold,
   italic, strikethrough, headings, lists, quote, inline code, code block,
   link, image, rule and table — with shortcuts for the common ones (⌘B, ⌘I,
-  ⌘1–4, ⇧⌘7/⇧⌘8, ⌘K), plus an optional icon toolbar over the editor for
-  the no-shortcut path. Paste cells from Numbers or Excel as a Markdown table,
+  ⌘1–4, ⌘K, ⇧⌘M, ⌥⌘Q, ⌥⌘C), plus an optional icon toolbar over the editor
+  (⌥⌘T) for the no-shortcut path. Paste cells from Numbers or Excel as a Markdown table,
   turn a selection of CSV into one, or copy a table back out as CSV.
 - **Focus mode** dims everything but the paragraph you're writing (⇧⌘F).
 - **Document tabs inside the window.** ⌘T opens a blank tab; clicking a file
@@ -127,6 +129,9 @@ scripts/test-html-safety.sh          # what a document's own HTML may run
 
 `test-formatting.sh` and `test-html-safety.sh` link the swift-markdown
 objects from a prior Debug build, so run a normal build once before them.
+`scripts/test-all.sh` does that build and then runs every suite, ending with
+a one-line summary per suite; it is what the GitHub Actions workflow runs on
+every push and pull request.
 
 On first launch, click **Add Folder…** (⇧⌘O) and pick any folder of `.md`
 files — try the bundled `Samples/` folder, which contains a mixed
@@ -161,9 +166,9 @@ English/Arabic document and an Arabic-named file.
 | --- | --- |
 | Show / hide sidebar | ⌃⌘S |
 | Edit Only / Dual View / View Only | View menu, or the status bar |
-| Cycle those three | ⇧⌘P |
+| Cycle those three | View menu |
 | Focus mode | ⇧⌘F |
-| Show / hide format bar | View menu |
+| Show / hide format bar | ⌥⌘T |
 
 ### Format
 
@@ -171,9 +176,10 @@ English/Arabic document and an Arabic-named file.
 | --- | --- |
 | Bold / Italic / Strikethrough | ⌘B / ⌘I / ⇧⌘X |
 | Heading 1–4 | ⌘1 – ⌘4 |
-| Bulleted / Numbered list | ⇧⌘8 / ⇧⌘7 |
 | Link | ⌘K |
-| Inline code, Quote, Code block, Image, Rule, Table | Format menu |
+| Inline code | ⇧⌘M |
+| Quote / Code block | ⌥⌘Q / ⌥⌘C |
+| Bulleted / Numbered list, Image, Rule, Table | Format menu |
 
 The UI language follows the system by default; you can pin it to English or
 العربية in Settings — the window chrome (including the sidebar side) switches

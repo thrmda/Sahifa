@@ -88,6 +88,71 @@ func unpluggedDrive() async {
     relaunched.removeSource(Source.looseFilesID)
 }
 
+// MARK: A source folder renamed or moved while the app runs
+
+@MainActor
+func renamedRoot() async {
+    let folder = root.appendingPathComponent("watched")
+    try? fm.createDirectory(at: folder.appendingPathComponent("sub"), withIntermediateDirectories: true)
+    try? "# one\n".write(to: folder.appendingPathComponent("one.md"), atomically: true, encoding: .utf8)
+    let model = AppModel()
+    model.openExternal([folder])
+    guard let source = model.sources.first(where: {
+        $0.rootURL?.standardizedFileURL == folder.standardizedFileURL
+    }) else { check("the folder is added as a source", false); return }
+    let rootID = DocumentID(sourceID: source.id, path: "")
+    func current() -> Source? { model.source(source.id) }
+    // /var is /private/var, which a path that no longer exists won't resolve.
+    func path(_ url: URL?) -> String? {
+        url.map {
+            var parts = $0.resolvingSymlinksInPath().pathComponents
+            if parts.count > 1, parts[1] == "private" { parts.remove(at: 1) }
+            return NSString.path(withComponents: parts)
+        }
+    }
+    func waitUntil(_ condition: () -> Bool) async -> Int {
+        var waited = 0
+        while !condition(), waited < 50 {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            waited += 1
+        }
+        return waited * 100
+    }
+
+    let document = model.document(for: DocumentID(sourceID: source.id, path: "one.md"))
+    document?.text = "# one\n\ntyped before the rename\n"
+    // The app finishes setting the source up on the next turn of the main
+    // loop; a user can't rename the folder before that.
+    try? await Task.sleep(nanoseconds: 100_000_000)
+    let renamed = root.appendingPathComponent("watched-renamed")
+    try? fm.moveItem(at: folder, to: renamed)
+    var ms = await waitUntil { path(current()?.rootURL) == path(renamed) }
+    check("a source folder renamed in Finder is followed to its new path",
+          path(current()?.rootURL) == path(renamed), "after \(ms) ms")
+    check("…and takes the new name", current()?.name == "watched-renamed", current()?.name ?? "nil")
+    check("…and stays ready", current()?.status == .ready)
+    check("…still listing its files", model.children(of: rootID)?.contains { $0.name == "one.md" } == true)
+    await document?.flush()
+    let onDisk = try? String(contentsOf: renamed.appendingPathComponent("one.md"), encoding: .utf8)
+    check("…and edits made before the rename save into the renamed folder",
+          onDisk == "# one\n\ntyped before the rename\n", onDisk ?? "nil")
+
+    try? "# two\n".write(to: renamed.appendingPathComponent("two.md"), atomically: true, encoding: .utf8)
+    ms = await waitUntil { model.children(of: rootID)?.contains { $0.name == "two.md" } == true }
+    check("…and the watcher follows it: a file added there shows up",
+          model.children(of: rootID)?.contains { $0.name == "two.md" } == true, "after \(ms) ms")
+
+    // Moved to the Trash, the bookmark still finds it; the sidebar must not.
+    let trash = root.appendingPathComponent(".Trash")
+    try? fm.createDirectory(at: trash, withIntermediateDirectories: true)
+    try? fm.moveItem(at: renamed, to: trash.appendingPathComponent("watched-renamed"))
+    ms = await waitUntil { current()?.status == .missing }
+    check("a source folder moved to the Trash is missing, not followed",
+          current()?.status == .missing && path(current()?.rootURL) == path(renamed),
+          "after \(ms) ms")
+    model.removeSource(source.id)
+}
+
 // MARK: Real file operations
 
 @MainActor
@@ -264,6 +329,7 @@ func fileOperations() async {
 }
 
 await unpluggedDrive()
+await renamedRoot()
 await fileOperations()
 
 // Clean up our own trashed test files rather than leaving litter behind.
