@@ -45,6 +45,8 @@ final class WindowState: ObservableObject {
     /// The row currently being renamed inline, and the text being edited.
     @Published var renaming: DocumentID?
     @Published var renameText = ""
+    /// Why the last rename, delete or new file failed, shown in this window.
+    @Published var operationError: String?
     /// Per-window; the last change also becomes the default for new windows.
     @Published var viewMode: ViewMode {
         didSet { UserDefaults.standard.set(viewMode.rawValue, forKey: "viewMode") }
@@ -170,11 +172,39 @@ final class WindowState: ObservableObject {
     /// Where a new file should land: the selected folder, or the folder
     /// holding the selected document, so ⌘N follows what the user is looking
     /// at rather than always dropping into the first source.
+    ///
+    /// nil when what's selected offers no folder to create in (a blank tab, a
+    /// loose file, a read-only repository), so the file goes to the first
+    /// writable source instead of nowhere.
     var newFileTarget: DocumentID? {
-        guard let selection else { return nil }
-        if model?.children(of: selection) != nil { return selection }
-        let parent = (selection.path as NSString).deletingLastPathComponent
-        return DocumentID(sourceID: selection.sourceID, path: parent)
+        guard let selection, !selection.isBlankTab, let model else { return nil }
+        let folder = model.children(of: selection) != nil
+            ? selection
+            : DocumentID(sourceID: selection.sourceID,
+                         path: (selection.path as NSString).deletingLastPathComponent)
+        return model.canCreate(in: folder) ? folder : nil
+    }
+
+    /// Runs a sidebar or menu action, and shows its failure in this window
+    /// rather than dropping it: a rename the disk refused used to just
+    /// close the field as if it had worked.
+    func run(_ action: @escaping @MainActor () async throws -> Void) {
+        Task { @MainActor [weak self] in
+            do {
+                try await action()
+            } catch {
+                self?.operationError = error.localizedDescription
+            }
+        }
+    }
+
+    /// Creates a file where ⌘N should put it and shows it.
+    func newFile() {
+        guard let model else { return }
+        let target = newFileTarget
+        run { [weak self] in
+            if let id = try await model.newFile(in: target) { self?.selection = id }
+        }
     }
 
     /// Drives a DisclosureGroup and loads that directory's children the first

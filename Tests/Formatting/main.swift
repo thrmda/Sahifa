@@ -296,6 +296,129 @@ func run() {
                   "\(bodyFont?.fontName ?? "?") -> \(emFont?.fontName ?? "?")")
         }
     }
+
+    // MARK: Hardening round (2026-10-21)
+
+    // ⌘I on a bold word adds italic; it used to read the inner "*" of "**"
+    // as an italic marker and strip it, turning bold into italic.
+    do {
+        let e = makeEditor("**word**", select: NSRange(location: 2, length: 4))
+        e.sahifaToggleItalic(nil)
+        check("italic on a bold word makes it bold-italic", e.string == "***word***", e.string)
+        e.sahifaToggleItalic(nil)
+        check("…and toggles back to bold", e.string == "**word**", e.string)
+    }
+    do {
+        let text = "*a* and *b*"
+        let e = makeEditor(text, select: NSRange(location: 0, length: (text as NSString).length))
+        e.sahifaToggleItalic(nil)
+        check("a selection spanning two italic runs is wrapped, not mangled",
+              e.string == "**a* and *b**", e.string)
+    }
+    do {
+        let e = makeEditor("**bold**", select: NSRange(location: 0, length: 8))
+        e.sahifaToggleItalic(nil)
+        check("italic over a whole bold selection wraps it", e.string == "***bold***", e.string)
+    }
+
+    // CRLF: a code block adds no blank line and no LF; a heading toggles.
+    do {
+        let e = makeEditor("x\r\ncode\r\ny", select: NSRange(location: 4, length: 0))
+        e.sahifaInsertCodeBlock(nil)
+        check("a code block in a CRLF file keeps CRLF and adds no blank line",
+              e.string == "x\r\n```\r\ncode\r\n```\r\ny", e.string.debugDescription)
+        let h = makeEditor("#\r\nnext", select: NSRange(location: 0, length: 0))
+        h.sahifaHeading1(nil)
+        check("an empty CRLF heading toggles off", h.string == "\r\nnext", h.string.debugDescription)
+    }
+
+    // A CRLF document is styled past its first line.
+    do {
+        let styler = MarkdownStyler()
+        styler.theme = EditorTheme(fontSize: 16, lineHeightMultiple: 1.4)
+        let text = "intro\r\n\r\n# Heading\r\n"
+        let storage = NSTextStorage(string: text)
+        styler.restyle(storage)
+        let at = (text as NSString).range(of: "Heading").location
+        let size = (storage.attribute(.font, at: at, effectiveRange: nil) as? NSFont)?.pointSize ?? 0
+        check("a heading after CRLF lines is styled as a heading", size > 20, "\(size) pt")
+        let lone = "intro\r# Heading\r"
+        let loneStorage = NSTextStorage(string: lone)
+        styler.restyle(loneStorage)
+        let loneAt = (lone as NSString).range(of: "Heading").location
+        let loneSize = (loneStorage.attribute(.font, at: loneAt, effectiveRange: nil) as? NSFont)?.pointSize ?? 0
+        check("…and after a lone CR", loneSize > 20, "\(loneSize) pt")
+    }
+
+    // Copy as CSV works in a CRLF document.
+    do {
+        let board = NSPasteboard.withUniqueName()
+        let text = "| a | b |\r\n| --- | --- |\r\n| 1 | 2 |\r\n"
+        let e = makeEditor(text, select: NSRange(location: (text as NSString).range(of: "1").location, length: 0))
+        check("Copy Table as CSV works with CRLF lines",
+              e.copyTableAsCSV(to: board) && board.string(forType: .string) == "a,b\n1,2\n",
+              board.string(forType: .string)?.debugDescription ?? "nil")
+        board.releaseGlobally()
+    }
+
+    // Pasting an existing Markdown table keeps it a table; prose beeps.
+    do {
+        let board = NSPasteboard.withUniqueName()
+        board.clearContents()
+        board.setString("| a | b |\n| --- | --- |\n| 1 | 2 |", forType: .string)
+        let e = makeEditor("", select: NSRange(location: 0, length: 0))
+        e.pasteTable(from: board)
+        check("pasting a Markdown table keeps its two columns",
+              e.string.contains("| a | b |") && !e.string.contains("|  |") && !e.string.contains("| --- | --- |\n| --- |"),
+              e.string.debugDescription)
+        board.clearContents()
+        board.setString("Just a sentence.", forType: .string)
+        let prose = makeEditor("", select: NSRange(location: 0, length: 0))
+        prose.pasteTable(from: board)
+        check("prose isn't pasted as a one-column table", prose.string.isEmpty, prose.string.debugDescription)
+        board.releaseGlobally()
+    }
+
+    // Text replaced from outside (another window on the same file, a reload)
+    // drops the editor's undo history: replaying a step recorded against the
+    // longer old text raised an out-of-bounds exception and crashed.
+    do {
+        let e = makeEditor("", select: NSRange(location: 0, length: 0))
+        let coordinator = MarkdownEditor.Coordinator(
+            MarkdownEditor(text: .constant(""), fontSize: 16, lineSpacing: 1.4))
+        coordinator.textView = e
+        e.insertText("a long line typed in this window", replacementRange: e.selectedRange())
+        check("typing leaves something to undo", e.undoManager?.canUndo == true)
+        let changed = coordinator.adoptExternalText("x")
+        check("text from elsewhere replaces the editor's", changed && e.string == "x", e.string)
+        check("…and clears undo steps that no longer fit", e.undoManager?.canUndo == false)
+        e.undoManager?.undo()   // must not raise
+        check("…so undo leaves the new text alone", e.string == "x", e.string)
+        check("identical text is left alone", !coordinator.adoptExternalText("x"))
+        check("canonically equivalent text still counts as a change",
+              coordinator.adoptExternalText("cafe\u{301}") && coordinator.adoptExternalText("caf\u{E9}"))
+    }
+
+    // Only letters set a paragraph's direction, as with dir="auto".
+    check("Arabic text is RTL", BidiDirection.firstStrong(in: "مرحبا") == .rightToLeft)
+    check("digits before Arabic don't decide it", BidiDirection.firstStrong(in: "123 مرحبا") == .rightToLeft)
+    check("Arabic-Indic digits are weak", BidiDirection.firstStrong(in: "١٢ apples") == .leftToRight)
+    check("a byte-order mark is not a strong character",
+          BidiDirection.firstStrong(in: "\u{FEFF}Name,Age") == .leftToRight)
+    check("an Arabic comma is not either", BidiDirection.firstStrong(in: "، hello") == .leftToRight)
+
+    // A list toggle over many lines is one change, and one undo.
+    do {
+        let lines = (1...500).map { "line \($0)" }.joined(separator: "\n")
+        let e = makeEditor(lines, select: NSRange(location: 0, length: (lines as NSString).length))
+        let start = Date()
+        e.sahifaToggleBulletList(nil)
+        let elapsed = Date().timeIntervalSince(start)
+        check("500 lines become a list", e.string.hasPrefix("- line 1\n- line 2") && e.string.hasSuffix("- line 500"))
+        check("…in a single change", elapsed < 2, String(format: "%.2f s", elapsed))
+        e.undoManager?.undo()
+        check("…undone in one step", e.string == lines)
+    }
 }
 
 MainActor.assumeIsolated { run() }

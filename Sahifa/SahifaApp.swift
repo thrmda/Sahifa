@@ -41,9 +41,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard AppModel.shared.hasPendingSaves else { return .terminateNow }
             Task {
                 await AppModel.shared.flushAll()
-                // A local save always lands, so anything still unsaved here is a
-                // remote save that couldn't reach the server. Quitting would
-                // drop it, so ask rather than lose work silently.
+                // Anything still unsaved here couldn't be saved: a server out
+                // of reach, a conflict waiting on a choice, a disk that refused.
+                // Quitting would drop it, so ask rather than lose work silently.
                 let stranded = AppModel.shared.documentsWithUnsavedChanges
                 let reply = stranded.isEmpty || Self.confirmQuitWithUnsaved(stranded)
                 NSApp.reply(toApplicationShouldTerminate: reply)
@@ -60,11 +60,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.messageText = documents.count == 1
             ? String(localized: "“\(names)” has unsaved changes that couldn't be saved.")
             : String(localized: "\(documents.count) documents have unsaved changes that couldn't be saved.")
-        alert.informativeText = String(localized:
-            "The server couldn't be reached. If you quit now, these changes are lost.")
-        alert.addButton(withTitle: String(localized: "Quit Anyway"))
+        // Say what actually stopped the save, not always the network.
+        let reason = documents.contains(where: \.hasConflict)
+            ? String(localized: "A document changed elsewhere while you were editing it, and is waiting for you to choose which version to keep.")
+            : documents.compactMap(\.lastError).first
+                ?? String(localized: "The server couldn't be reached.")
+        alert.informativeText = reason + "\n\n"
+            + String(localized: "If you quit now, these changes are lost.")
+        // The safe answer is the default, so Return keeps the work; quitting
+        // anyway takes a deliberate click.
         alert.addButton(withTitle: String(localized: "Don't Quit"))
-        return alert.runModal() == .alertFirstButtonReturn
+        let quit = alert.addButton(withTitle: String(localized: "Quit Anyway"))
+        quit.hasDestructiveAction = true
+        return alert.runModal() == .alertSecondButtonReturn
     }
 }
 
@@ -119,15 +127,11 @@ struct SahifaCommands: Commands {
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
-            Button("New File") {
-                Task {
-                    if let id = await model.newFile(in: windowState?.newFileTarget) {
-                        windowState?.selection = id
-                    }
-                }
-            }
-            .keyboardShortcut("n", modifiers: .command)
-            .disabled(!model.canCreateFiles)
+            Button("New File") { windowState?.newFile() }
+                .keyboardShortcut("n", modifiers: .command)
+                // With no window in front (Settings, say) the new file would be
+                // created and then shown nowhere.
+                .disabled(!model.canCreateFiles || windowState == nil)
             Button("New Window") { openWindow(id: "main") }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
             // An in-window tab, not a native window-tab: a fresh blank tab in
@@ -196,22 +200,22 @@ struct SahifaCommands: Commands {
                 .keyboardShortcut("s", modifiers: .command)
             Divider()
             Button("Export as HTML…") {
-                if let document = windowState?.document {
+                if let document = loadedDocument {
                     Exporter.shared.exportHTML(text: document.text, kind: document.kind,
                                                suggestedName: document.exportName)
                 }
             }
             .keyboardShortcut("e", modifiers: [.command, .shift])
-            .disabled(windowState?.document == nil)
+            .disabled(loadedDocument == nil)
             Button("Export as PDF…") {
-                if let document = windowState?.document {
+                if let document = loadedDocument {
                     Exporter.shared.exportPDF(markdown: document.text,
                                               suggestedName: document.exportName)
                 }
             }
             // A wide table would be cut off at the edge of an A4 page, so
             // tables export as HTML only.
-            .disabled(windowState?.document == nil || windowState?.document?.kind.isTable == true)
+            .disabled(loadedDocument == nil || loadedDocument?.kind.isTable == true)
         }
         CommandGroup(after: .sidebar) {
             Button(windowState?.sidebarVisible == true ? "Hide Sidebar" : "Show Sidebar") {
@@ -291,18 +295,33 @@ struct SahifaCommands: Commands {
                 }
                 Button("Copy Table as CSV") { send(#selector(BidiTextView.sahifaCopyTableAsCSV(_:))) }
             }
-            .disabled(windowState?.document?.kind.isTable == true)
+            .disabled(!canFormat)
             Divider()
             // The whole file, and straight from the document rather than
             // through the editor: View Only, where a table opens, has none.
             Button("Copy as Markdown Table") {
-                guard let document = windowState?.document, document.kind.isTable else { return }
+                guard let document = loadedDocument, document.kind.isTable else { return }
                 let rows = DelimitedText(parsing: document.text, kind: document.kind).rows
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(MarkdownTable.markdown(from: rows), forType: .string)
             }
-            .disabled(windowState?.document?.kind.isTable != true)
+            .disabled(loadedDocument?.kind.isTable != true)
         }
+    }
+
+    /// The window's document, once there is text to act on: a repository file
+    /// still loading, or one that failed to, has none yet, and exporting or
+    /// copying it would produce an empty page or table.
+    private var loadedDocument: DocumentModel? {
+        guard let document = windowState?.document, document.loadState == .ready else { return nil }
+        return document
+    }
+
+    /// Formatting needs an editor that will take the edit: a Markdown document
+    /// that can be saved, with the editor on screen.
+    private var canFormat: Bool {
+        guard let document = loadedDocument, let windowState else { return false }
+        return !document.kind.isTable && !document.isReadOnly && windowState.activeViewMode.showsEditor
     }
 }
 

@@ -78,7 +78,7 @@ enum ArabicPDFTextFix {
                 guard let lo = Int(b.substring(with: m.range(at: 1)), radix: 16),
                       let hi = Int(b.substring(with: m.range(at: 2)), radix: 16) else { continue }
                 let dst = b.substring(with: m.range(at: 3))
-                var du = hexToBytes(dst)
+                let du = hexToBytes(dst)
                 guard du.count >= 2 else { continue }
                 for k in 0...(hi - lo) {
                     var d = du

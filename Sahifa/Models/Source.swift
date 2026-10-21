@@ -111,13 +111,22 @@ struct Source: Identifiable, Hashable {
 
     func documentID(for url: URL) -> DocumentID? {
         guard let rootURL else { return nil }
-        let root = rootURL.standardizedFileURL.path
         let target = url.standardizedFileURL.path
         if kind == .looseFiles {
             // Root is "/", so every absolute path is expressible; membership
             // is decided by the explicit file list, not by prefix.
             return DocumentID(sourceID: id, path: String(target.dropFirst()))
         }
+        if let id = documentID(path: target, root: rootURL.standardizedFileURL.path) { return id }
+        // A folder added through a symlink (or under /tmp, which is really
+        // /private/tmp) is reported by FSEvents at its real path, which the
+        // root as added never prefixes: compare the resolved forms too, or
+        // every change inside it goes unnoticed.
+        return documentID(path: url.resolvingSymlinksInPath().path,
+                          root: rootURL.resolvingSymlinksInPath().path)
+    }
+
+    private func documentID(path target: String, root: String) -> DocumentID? {
         guard target == root else {
             let prefix = root.hasSuffix("/") ? root : root + "/"
             guard target.hasPrefix(prefix) else { return nil }

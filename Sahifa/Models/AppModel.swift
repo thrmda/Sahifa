@@ -41,6 +41,10 @@ final class AppModel: ObservableObject {
     /// One recursive watcher per local source root.
     private var monitors: [UUID: DirectoryWatcher] = [:]
 
+    /// Follows the GitHub account once a repository is in use (see
+    /// `observeAccountIfNeeded`).
+    private var accountObservation: AnyCancellable?
+
     /// Which window's state receives externally opened documents (last key
     /// window; see KeyWindowTracker in ContentView).
     weak var frontWindowState: WindowState?
@@ -274,6 +278,7 @@ final class AppModel: ObservableObject {
         let source = sources[index]
         monitors[id]?.stop()
         monitors[id] = nil
+        sourceBookmarks[id] = nil
         sources.remove(at: index)
         childrenByDirectory = childrenByDirectory.filter { $0.key.sourceID != id }
         if source.kind == .looseFiles {
@@ -342,6 +347,39 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// A store holds the token it was made with, so an open repository
+    /// document would otherwise keep the credential it was opened under:
+    /// read-only after connecting, still writing after disconnecting. Started
+    /// only once a repository store exists, so a launch with no repository
+    /// never reaches the Keychain.
+    private func observeAccountIfNeeded() {
+        guard accountObservation == nil else { return }
+        accountObservation = GitHubAccount.shared.$state
+            .dropFirst()
+            .removeDuplicates()
+            // @Published announces before the value changes; the stores have
+            // to be rebuilt from the new one.
+            .receive(on: RunLoop.main)
+            .sink { [weak self] state in
+                MainActor.assumeIsolated { self?.accountChanged(state) }
+            }
+    }
+
+    private func accountChanged(_ state: GitHubAccount.State) {
+        let remote = Set(sources.filter { $0.kind == .gitHub }.map(\.id))
+        for (id, document) in documentCache where remote.contains(id.sourceID) {
+            if let store = store(for: id.sourceID) { document.replaceStore(store) }
+        }
+        guard case .connected = state else { return }
+        // Signed in again: clear the badges, and fetch what was refused.
+        for index in sources.indices where sources[index].status == .needsSignIn {
+            sources[index].status = .ready
+        }
+        for id in directoryErrors.keys where remote.contains(id.sourceID) {
+            loadChildren(of: id, force: true)
+        }
+    }
+
     private func markNeedsSignIn(sourceID: UUID) {
         guard let index = sources.firstIndex(where: { $0.id == sourceID }) else { return }
         sources[index].status = .needsSignIn
@@ -352,9 +390,14 @@ final class AppModel: ObservableObject {
     func addRepository(owner: String, name: String, branch: String?) {
         let trimmedOwner = owner.trimmingCharacters(in: .whitespaces)
         let trimmedName = name.trimmingCharacters(in: .whitespaces)
-        guard !trimmedOwner.isEmpty, !trimmedName.isEmpty else { return }
+        // Both end up in request paths; refuse anything GitHub couldn't have.
+        guard GitHubStore.isValidOwner(trimmedOwner),
+              GitHubStore.isValidRepositoryName(trimmedName) else { return }
+        // GitHub names are case-insensitive: Apple/Swift-Markdown is the same
+        // repository as apple/swift-markdown.
         if let existing = sources.first(where: {
-            $0.repository?.owner == trimmedOwner && $0.repository?.name == trimmedName
+            $0.repository?.owner.caseInsensitiveCompare(trimmedOwner) == .orderedSame
+                && $0.repository?.name.caseInsensitiveCompare(trimmedName) == .orderedSame
         }) {
             loadChildren(of: DocumentID(sourceID: existing.id, path: ""), force: true)
             return
@@ -411,7 +454,13 @@ final class AppModel: ObservableObject {
     // MARK: Documents
 
     func document(for id: DocumentID) -> DocumentModel? {
-        if let existing = documentCache[id] { return existing }
+        if let existing = documentCache[id] {
+            // Cached from an earlier visit: another program may have changed
+            // the file since, while the app stayed in front and no activation
+            // came along to notice.
+            existing.reconcileWithDisk()
+            return existing
+        }
         guard let store = store(for: id.sourceID) else { return nil }
         let document = DocumentModel(id: id, store: store)
         documentCache[id] = document
@@ -428,6 +477,7 @@ final class AppModel: ObservableObject {
             return LocalFileStore(sourceID: sourceID, root: root)
         case .gitHub:
             guard let repository = source.repository else { return nil }
+            observeAccountIfNeeded()
             return GitHubStore(sourceID: sourceID,
                                owner: repository.owner,
                                repository: repository.name,
@@ -472,8 +522,11 @@ final class AppModel: ObservableObject {
     /// listing the sidebar already has rather than by asking the store, which
     /// would be a request per attempt against a repository.
     @discardableResult
-    func newFile(in directory: DocumentID?) async -> DocumentID? {
-        guard let target = directory ?? firstWritableDirectory(),
+    func newFile(in directory: DocumentID?) async throws -> DocumentID? {
+        // Loose files have no folder of their own to create into: the "root"
+        // there is the whole disk.
+        let requested = directory.flatMap { canCreate(in: $0) ? $0 : nil }
+        guard let target = requested ?? firstWritableDirectory(),
               let store = store(for: target.sourceID), !store.isReadOnly
         else { return nil }
         loadChildren(of: target)
@@ -486,14 +539,15 @@ final class AppModel: ObservableObject {
             counter += 1
         }
         let id = target.appending(name)
-        do {
-            _ = try await store.write("", to: id, expecting: nil)
-        } catch {
-            directoryErrors[target] = error.localizedDescription
-            return nil
-        }
+        _ = try await store.write("", to: id, expecting: nil)
         loadChildren(of: target, force: true)
         return id
+    }
+
+    /// Whether a new file can be made in `directory` itself.
+    func canCreate(in directory: DocumentID) -> Bool {
+        guard let source = source(directory.sourceID), source.kind != .looseFiles else { return false }
+        return store(for: directory.sourceID)?.isReadOnly == false
     }
 
     private func firstWritableDirectory() -> DocumentID? {
@@ -507,8 +561,12 @@ final class AppModel: ObservableObject {
 
     /// Whether a document can be renamed or removed. Loose files are excluded:
     /// they are listed by the app, not owned by a folder it manages.
-    func canOrganise(_ id: DocumentID) -> Bool {
+    ///
+    /// A repository's folders are excluded too: its contents API renames and
+    /// deletes one file per commit, and has no call for a folder at all.
+    func canOrganise(_ id: DocumentID, isDirectory: Bool = false) -> Bool {
         guard let source = source(id.sourceID), source.kind != .looseFiles else { return false }
+        if isDirectory && !source.isLocal { return false }
         return store(for: id.sourceID)?.isReadOnly == false
     }
 
@@ -523,9 +581,10 @@ final class AppModel: ObservableObject {
         documentCache.values.contains { $0.isSaving || $0.hasUnsavedChanges }
     }
 
-    /// Documents with edits that still aren't saved. After `flushAll` this can
-    /// only be a remote save that failed — a local write always succeeds — so
-    /// it's what a quit-time warning is about.
+    /// Documents with edits that still aren't saved after `flushAll`: a
+    /// remote save that couldn't reach the server, a conflict waiting on a
+    /// decision, or a local write the disk refused. What a quit-time warning
+    /// is about.
     var documentsWithUnsavedChanges: [DocumentModel] {
         documentCache.values.filter { $0.hasUnsavedChanges }
     }
@@ -552,53 +611,96 @@ final class AppModel: ObservableObject {
     /// Async because pending edits must reach disk *before* the file moves —
     /// saving is no longer instant, and a write landing after the move would
     /// recreate the file under its old name.
+    ///
+    /// Returns nil when there is nothing to do (the name didn't change), and
+    /// throws when the rename can't happen, so the caller can say why.
     @discardableResult
-    func rename(_ id: DocumentID, to proposed: String) async -> DocumentID? {
-        let trimmed = proposed.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !trimmed.contains("/"), !trimmed.hasPrefix("."),
-              canOrganise(id), let store = store(for: id.sourceID),
-              let parent = id.parent
-        else { return nil }
-
-        var name = trimmed
-        if (name as NSString).pathExtension.isEmpty {
-            let existing = (id.path as NSString).pathExtension
-            if !existing.isEmpty { name += ".\(existing)" }
-        }
+    func rename(_ id: DocumentID, to proposed: String) async throws -> DocumentID? {
+        guard canOrganise(id), let store = store(for: id.sourceID), let parent = id.parent
+        else { throw OrganiseError.notAllowed }
+        let isDirectory = children(of: parent)?.first(where: { $0.id == id })?.isDirectory
+            ?? (children(of: id) != nil)
+        let name = try Self.renamedName(proposed, from: id.name, isDirectory: isDirectory)
         guard name != id.name else { return nil }
-        let taken = Set((children(of: parent) ?? []).map(\.name))
-        guard !taken.contains(name) else { return nil }
+        // Case-only renames are allowed; anything else matching an existing
+        // name is refused. Local volumes are usually case-insensitive, so
+        // "Notes.md" next to "notes.md" is the same file to them.
+        let siblings = (children(of: parent) ?? []).map(\.name).filter { $0 != id.name }
+        if siblings.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) {
+            throw OrganiseError.nameTaken(name)
+        }
 
-        // Flush pending edits before the document moves out from under them.
-        await documentCache[id]?.flush()
+        // Every open document at or under `id` moves with it. A conflict needs
+        // the user's decision first; moving would silently drop their side.
+        let affected = documentCache.filter { $0.key.isWithin(id) }
+        if affected.values.contains(where: \.hasConflict) {
+            throw OrganiseError.unresolvedConflict
+        }
+        // Pending edits reach the old file before it moves, and then nothing
+        // more is written there: a save landing after the move would recreate
+        // the file under its old name.
+        for document in affected.values { await document.flush() }
+        for document in affected.values {
+            document.detach()
+            await document.waitForSave()
+        }
         let newID = parent.appending(name)
         do {
             try await store.move(id, to: newID)
         } catch {
-            directoryErrors[parent] = error.localizedDescription
-            return nil
+            for document in affected.values { document.reattach() }
+            throw error
         }
         relocate(from: id, to: newID)
+        // Anything typed while the move was under way (or a save that failed
+        // and was still being held) carries over to the document at its new
+        // name rather than being lost with the old model.
+        for (key, old) in affected where old.hasUnsavedChanges {
+            guard let newKey = key.remapping(from: id, to: newID) else { continue }
+            document(for: newKey)?.adoptUnsavedText(old.text)
+        }
         loadChildren(of: parent, force: true)
         return newID
+    }
+
+    /// The whole filename a rename produces. A file keeps its extension when
+    /// the new name doesn't end in one Sahifa opens, so "Release 1.0" stays a
+    /// Markdown file ("Release 1.0.md") rather than turning into a ".0" file
+    /// the sidebar no longer lists. A folder takes the name exactly.
+    static func renamedName(_ proposed: String, from current: String,
+                            isDirectory: Bool) throws -> String {
+        let trimmed = proposed.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.contains("/"), !trimmed.contains(":"),
+              !trimmed.hasPrefix(".")
+        else { throw OrganiseError.invalidName }
+        guard !isDirectory, DocumentKind(fileName: trimmed) == nil else { return trimmed }
+        let existing = (current as NSString).pathExtension
+        return existing.isEmpty ? trimmed : "\(trimmed).\(existing)"
     }
 
     /// Removes a document. A local file goes to the Trash — recoverable, and
     /// what a Mac user expects, which is why nothing asks first. A document in
     /// a repository is removed by a commit instead: still recoverable, but
     /// only through git, so the caller asks first.
-    func delete(_ id: DocumentID) async {
+    func delete(_ id: DocumentID) async throws {
         guard let source = source(id.sourceID), let store = store(for: id.sourceID)
-        else { return }
-        if source.kind == .looseFiles, let url = self.url(for: id) {
-            // Removing it should also stop it being listed.
-            looseFiles.removeAll { $0.standardizedFileURL == url.standardizedFileURL }
+        else { throw OrganiseError.notAllowed }
+        // Nothing may be written to the document once it's on its way out —
+        // an autosave landing after the delete recreated the file in place.
+        let affected = documentCache.filter { $0.key.isWithin(id) }.values
+        for document in affected {
+            document.detach()
+            await document.waitForSave()
         }
         do {
             try await store.delete(id)
         } catch {
-            if let parent = id.parent { directoryErrors[parent] = error.localizedDescription }
-            return
+            for document in affected { document.reattach() }
+            throw error
+        }
+        if source.kind == .looseFiles, let url = self.url(for: id) {
+            // Removing it should also stop it being listed.
+            looseFiles.removeAll { $0.standardizedFileURL == url.standardizedFileURL }
         }
         relocate(from: id, to: nil)
         if source.kind == .looseFiles {
@@ -626,6 +728,9 @@ final class AppModel: ObservableObject {
     /// windows so their selection and open folders follow.
     private func relocate(from: DocumentID, to: DocumentID?) {
         for key in documentCache.keys where key.isWithin(from) {
+            // Windows may still hold the old model until they remap; it must
+            // not write to where the document used to be.
+            documentCache[key]?.detach()
             documentCache[key] = nil
         }
         for key in childrenByDirectory.keys where key.isWithin(from) {
@@ -665,6 +770,11 @@ final class AppModel: ObservableObject {
         guard let source = source(sourceID) else { return }
         for directory in directories {
             guard let id = source.documentID(for: directory) else { continue }
+            // Open documents in a changed folder pick up edits made by other
+            // programs now, not only when the app next comes to the front.
+            for (key, document) in documentCache where key.parent == id {
+                document.reconcileWithDisk()
+            }
             if childrenByDirectory[id] != nil {
                 loadChildren(of: id, force: true)
             }
@@ -685,6 +795,14 @@ final class AppModel: ObservableObject {
     /// Pre-sources keys, read once to migrate and then left alone.
     private static let legacyWorkspaceKey = "workspaceBookmark"
 
+    /// The last bookmark each local source was saved with. A folder on an
+    /// unplugged drive can't be bookmarked afresh, and without this the next
+    /// save of the list (adding another folder, reordering) dropped it for good.
+    private var sourceBookmarks: [UUID: Data] = [:]
+    /// Saved sources whose bookmark didn't resolve at launch — a volume not
+    /// mounted yet, say. Written back untouched so they return with it.
+    private var unresolvedSourceRecords: [SourceRecord] = []
+
     private struct SourceRecord: Codable {
         let id: UUID
         let name: String
@@ -697,10 +815,11 @@ final class AppModel: ObservableObject {
         let records: [SourceRecord] = sources.compactMap { source in
             switch source.kind {
             case .localFolder:
-                guard let bookmark = try? source.rootURL?.bookmarkData(
-                        options: .withSecurityScope,
-                        includingResourceValuesForKeys: nil, relativeTo: nil)
-                else { return nil }
+                let fresh = try? source.rootURL?.bookmarkData(
+                    options: .withSecurityScope,
+                    includingResourceValuesForKeys: nil, relativeTo: nil)
+                guard let bookmark = fresh ?? sourceBookmarks[source.id] else { return nil }
+                sourceBookmarks[source.id] = bookmark
                 return SourceRecord(id: source.id, name: source.name, bookmark: bookmark)
             case .gitHub:
                 guard let repository = source.repository else { return nil }
@@ -710,7 +829,8 @@ final class AppModel: ObservableObject {
                 return nil
             }
         }
-        guard let data = try? JSONEncoder().encode(records) else { return }
+        let kept = unresolvedSourceRecords.filter { record in !sources.contains { $0.id == record.id } }
+        guard let data = try? JSONEncoder().encode(records + kept) else { return }
         UserDefaults.standard.set(data, forKey: Self.sourcesKey)
     }
 
@@ -732,8 +852,12 @@ final class AppModel: ObservableObject {
                                           repository: repository))
                     continue
                 }
-                guard let bookmark = record.bookmark,
-                      let url = resolveBookmark(bookmark) else { continue }
+                guard let bookmark = record.bookmark else { continue }
+                guard let url = resolveBookmark(bookmark) else {
+                    unresolvedSourceRecords.append(record)
+                    continue
+                }
+                sourceBookmarks[record.id] = bookmark
                 var source = Source(id: record.id, kind: .localFolder,
                                     name: record.name, rootURL: url)
                 source.status = FileManager.default.fileExists(atPath: url.path)
@@ -756,6 +880,9 @@ final class AppModel: ObservableObject {
             looseFiles.append(url)
         }
         if !looseFiles.isEmpty { ensureLooseFilesSource() }
+        // A stale bookmark still resolves, but macOS asks for it to be made
+        // again while it still can be; left alone it eventually stops working.
+        if foundStaleBookmark { persistSources() }
         startWatchingAndReadSourcesSoon()
     }
 
@@ -800,6 +927,8 @@ final class AppModel: ObservableObject {
     /// Resolves a security-scoped bookmark and opens its scope for the app's
     /// lifetime — sources and loose files are needed for as long as they're
     /// listed, so there is nothing to balance here.
+    private var foundStaleBookmark = false
+
     private func resolveBookmark(_ data: Data) -> URL? {
         var stale = false
         guard let url = try? URL(resolvingBookmarkData: data,
@@ -807,6 +936,7 @@ final class AppModel: ObservableObject {
                                  relativeTo: nil,
                                  bookmarkDataIsStale: &stale)
         else { return nil }
+        if stale { foundStaleBookmark = true }
         _ = url.startAccessingSecurityScopedResource()
         return url
     }
@@ -892,5 +1022,27 @@ final class AppModel: ObservableObject {
     private func forgetRecent(_ item: RecentItem) {
         recentItems.removeAll { $0.path == item.path }
         persistRecents()
+    }
+}
+
+/// Why renaming, deleting or creating something in the sidebar didn't happen.
+/// Store failures (a full disk, a refused commit) come through as they are.
+enum OrganiseError: LocalizedError, Equatable {
+    case notAllowed
+    case invalidName
+    case nameTaken(String)
+    case unresolvedConflict
+
+    var errorDescription: String? {
+        switch self {
+        case .notAllowed:
+            return String(localized: "This item can't be changed here.")
+        case .invalidName:
+            return String(localized: "A name can't be empty, start with a dot, or contain \"/\" or \":\".")
+        case .nameTaken(let name):
+            return String(localized: "\"\(name)\" is already taken. Choose a different name.")
+        case .unresolvedConflict:
+            return String(localized: "This document changed elsewhere while you were editing it. Resolve that first, then rename it.")
+        }
     }
 }

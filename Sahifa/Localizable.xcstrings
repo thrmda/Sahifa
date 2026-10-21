@@ -122,17 +122,6 @@
         }
       }
     },
-    "Choose a Markdown file from the sidebar.": {
-      "extractionState": "manual",
-      "localizations": {
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "اختر ملف ماركداون من الشريط الجانبي."
-          }
-        }
-      }
-    },
     "Clear Menu": {
       "localizations": {
         "ar": {
@@ -310,16 +299,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "فارغ"
-          }
-        }
-      }
-    },
-    "Enter it as owner/repository - for example apple/swift-markdown. Public repositories can be read without signing in; the files are opened read-only.": {
-      "localizations": {
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "أدخله بالصيغة المالك/المستودع - مثل apple/swift-markdown. يمكن قراءة المستودعات العامة دون تسجيل الدخول، وتُفتح الملفات للقراءة فقط."
           }
         }
       }
@@ -651,17 +630,6 @@
         }
       }
     },
-    "No folder open": {
-      "extractionState": "manual",
-      "localizations": {
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "لا يوجد مجلد مفتوح"
-          }
-        }
-      }
-    },
     "No folders yet": {
       "localizations": {
         "ar": {
@@ -712,34 +680,12 @@
         }
       }
     },
-    "Open Folder…": {
-      "extractionState": "manual",
-      "localizations": {
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "فتح مجلد…"
-          }
-        }
-      }
-    },
     "Open Recent": {
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
             "value": "فتح الأخيرة"
-          }
-        }
-      }
-    },
-    "Open a folder of Markdown files to begin.": {
-      "extractionState": "manual",
-      "localizations": {
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "افتح مجلدًا يحتوي على ملفات ماركداون للبدء."
           }
         }
       }
@@ -820,16 +766,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "مستودع للقراءة فقط"
-          }
-        }
-      }
-    },
-    "Read-only. Saving to this source isn't supported yet.": {
-      "localizations": {
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "للقراءة فقط. الحفظ في هذا المصدر غير مدعوم بعد."
           }
         }
       }
@@ -1012,16 +948,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "هذا المسار ليس مجلدًا."
-          }
-        }
-      }
-    },
-    "The server couldn't be reached. If you quit now, these changes are lost.": {
-      "localizations": {
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "تعذّر الوصول إلى الخادم. إذا خرجت الآن، ستُفقد هذه التغييرات."
           }
         }
       }
@@ -1398,6 +1324,282 @@
           "stringUnit": {
             "state": "translated",
             "value": "تحريك لأسفل"
+          }
+        }
+      }
+    },
+    "“%@” has unsaved changes that couldn't be saved.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "يحتوي «%@» على تغييرات تعذّر حفظها."
+          }
+        }
+      }
+    },
+    "A document changed elsewhere while you were editing it, and is waiting for you to choose which version to keep.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تغيّر أحد المستندات في مكان آخر أثناء تحريرك له، وينتظر أن تختار النسخة التي تريد الاحتفاظ بها."
+          }
+        }
+      }
+    },
+    "The server couldn't be reached.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تعذّر الوصول إلى الخادم."
+          }
+        }
+      }
+    },
+    "If you quit now, these changes are lost.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إذا خرجت الآن، ستُفقد هذه التغييرات."
+          }
+        }
+      }
+    },
+    "View": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "عرض"
+          }
+        }
+      }
+    },
+    "This item can't be changed here.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لا يمكن تغيير هذا العنصر هنا."
+          }
+        }
+      }
+    },
+    "A name can't be empty, start with a dot, or contain \"/\" or \":\".": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لا يمكن أن يكون الاسم فارغًا، أو أن يبدأ بنقطة، أو أن يحتوي على \"/\" أو \":\"."
+          }
+        }
+      }
+    },
+    "\"%@\" is already taken. Choose a different name.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الاسم \"%@\" مستخدم بالفعل. اختر اسمًا آخر."
+          }
+        }
+      }
+    },
+    "This document changed elsewhere while you were editing it. Resolve that first, then rename it.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تغيّر هذا المستند في مكان آخر أثناء تحريرك له. احسم ذلك أولًا، ثم أعد تسميته."
+          }
+        }
+      }
+    },
+    "GitHub refused the change: %@": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "رفض GitHub التغيير: %@"
+          }
+        }
+      }
+    },
+    "The server returned an error (%lld).": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "أعاد الخادم خطأً (%lld)."
+          }
+        }
+      }
+    },
+    "The page stopped rendering before the PDF was finished.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "توقّف عرض الصفحة قبل اكتمال ملف PDF."
+          }
+        }
+      }
+    },
+    "Could not measure the document for pagination.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تعذّر قياس المستند لتقسيمه إلى صفحات."
+          }
+        }
+      }
+    },
+    "Could not serialize the PDF.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تعذّر إنشاء ملف PDF."
+          }
+        }
+      }
+    },
+    "Enter it as owner/repository, or paste its address - for example apple/swift-markdown. Public repositories can be read without signing in; connect an account in Settings to save changes.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "أدخله بالصيغة المالك/المستودع، أو الصق عنوانه - مثل apple/swift-markdown. يمكن قراءة المستودعات العامة دون تسجيل الدخول، واربط حسابًا من الإعدادات لحفظ التغييرات."
+          }
+        }
+      }
+    },
+    "That isn't a repository name. Enter it as owner/repository, for example apple/swift-markdown.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "هذا ليس اسم مستودع. أدخله بالصيغة المالك/المستودع، مثل apple/swift-markdown."
+          }
+        }
+      }
+    },
+    "Connected as %@ · expires %@": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "متصل باسم %@ · تنتهي صلاحيته في %@"
+          }
+        }
+      }
+    },
+    "Connected as %@": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "متصل باسم %@"
+          }
+        }
+      }
+    },
+    "%@ no longer has access. Reconnect to keep saving.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لم يعد %@ يملك صلاحية الوصول. أعد الاتصال لمتابعة الحفظ."
+          }
+        }
+      }
+    },
+    "That didn't work": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تعذّر إتمام ذلك"
+          }
+        }
+      }
+    },
+    "OK": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "حسنًا"
+          }
+        }
+      }
+    },
+    "Choose a Markdown file from the sidebar, or open one in this tab.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اختر ملف ماركداون من الشريط الجانبي، أو افتح ملفًا في علامة التبويب هذه."
+          }
+        }
+      }
+    },
+    "Read-only. Connect a GitHub account in Settings to save changes.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "للقراءة فقط. اربط حساب GitHub من الإعدادات لحفظ التغييرات."
+          }
+        }
+      }
+    },
+    "%lld documents have unsaved changes that couldn't be saved.": {
+      "localizations": {
+        "ar": {
+          "variations": {
+            "plural": {
+              "zero": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "لا توجد مستندات فيها تغييرات تعذّر حفظها."
+                }
+              },
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "مستند واحد فيه تغييرات تعذّر حفظها."
+                }
+              },
+              "two": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "مستندان فيهما تغييرات تعذّر حفظها."
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld مستندات فيها تغييرات تعذّر حفظها."
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld مستندًا فيها تغييرات تعذّر حفظها."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld مستند فيها تغييرات تعذّر حفظها."
+                }
+              }
+            }
           }
         }
       }

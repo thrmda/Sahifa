@@ -10,6 +10,11 @@ enum BidiDirection {
     /// Scans for the first strong character. RTL scripts are matched by
     /// block; any other letter counts as strong LTR. Digits, punctuation and
     /// whitespace are weak/neutral and skipped — exactly like dir="auto".
+    ///
+    /// Only the letters in an RTL block are strong. The same blocks hold
+    /// Arabic-Indic digits (weak), combining marks, the Arabic comma and the
+    /// byte-order mark (U+FEFF, at the end of presentation forms B); counting
+    /// those set "١٢ apples", or a CSV header behind a BOM, right-to-left.
     static func firstStrong<S: StringProtocol>(in text: S) -> BidiDirection {
         for scalar in text.unicodeScalars {
             switch scalar.value {
@@ -22,18 +27,21 @@ enum BidiDirection {
                  0xFE70...0xFEFF,           // Arabic presentation forms B
                  0x10800...0x10FFF,         // historic RTL scripts
                  0x1E800...0x1EEBB:         // Adlam, Mende Kikakui, Arabic math symbols
-                return .rightToLeft
+                if isLetter(scalar) { return .rightToLeft }
             default:
-                let category = scalar.properties.generalCategory
-                switch category {
-                case .uppercaseLetter, .lowercaseLetter, .titlecaseLetter,
-                     .modifierLetter, .otherLetter:
-                    return .leftToRight
-                default:
-                    continue
-                }
+                if isLetter(scalar) { return .leftToRight }
             }
         }
         return .neutral
+    }
+
+    private static func isLetter(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.properties.generalCategory {
+        case .uppercaseLetter, .lowercaseLetter, .titlecaseLetter,
+             .modifierLetter, .otherLetter:
+            return true
+        default:
+            return false
+        }
     }
 }

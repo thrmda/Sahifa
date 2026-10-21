@@ -198,7 +198,7 @@ struct LocalFileStore: DocumentStore {
     /// another program's write.
     func version(of id: DocumentID) -> VersionToken? {
         guard let attributes = try? FileManager.default
-                .attributesOfItem(atPath: url(for: id).path),
+                .attributesOfItem(atPath: fileURL(for: id).path),
               let modified = attributes[.modificationDate] as? Date,
               let size = attributes[.size] as? Int
         else { return nil }
@@ -262,8 +262,29 @@ struct LocalFileStore: DocumentStore {
         if let current = version(of: id), current != expecting {
             throw DocumentStoreError.versionConflict
         }
-        try encoding.encode(text).write(to: url(for: id), options: .atomic)
+        let target = fileURL(for: id)
+        // An atomic write replaces the file wholesale, so it would quietly
+        // ignore a file the user locked against changes.
+        if FileManager.default.fileExists(atPath: target.path),
+           !FileManager.default.isWritableFile(atPath: target.path) {
+            throw CocoaError(.fileWriteNoPermission, userInfo: [NSFilePathErrorKey: target.path])
+        }
+        try encoding.encode(text).write(to: target, options: .atomic)
         return version(of: id)
+    }
+
+    /// The file a document's bytes actually live in. A symlinked document is
+    /// read through its link anyway, but an atomic write would replace the
+    /// link itself with a regular file, leaving the real file untouched and
+    /// the two silently diverged; and the link's own date and size say
+    /// nothing about edits to its target. So writes and versions go to the
+    /// destination.
+    func fileURL(for id: DocumentID) -> URL {
+        let link = url(for: id)
+        guard let destination = try? FileManager.default.destinationOfSymbolicLink(atPath: link.path)
+        else { return link }
+        return URL(fileURLWithPath: destination, relativeTo: link.deletingLastPathComponent())
+            .standardizedFileURL
     }
 
     /// The Trash rather than an unlink: recoverable, and what a Mac user

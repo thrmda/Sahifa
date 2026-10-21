@@ -15,6 +15,63 @@ let store = GitHubStore(sourceID: UUID(), owner: "thrmda", repository: "Sahifa",
                         branch: nil, token: nil)
 func id(_ path: String) -> DocumentID { DocumentID(sourceID: store.sourceID, path: path) }
 
+// MARK: Offline: reading what was typed as a repository
+
+func parsed(_ input: String) -> String {
+    GitHubStore.parseRepository(input).map { "\($0.owner)/\($0.name)" } ?? "nil"
+}
+check("owner/name parses", parsed("apple/swift-markdown") == "apple/swift-markdown")
+check("a pasted URL with a query drops the query",
+      parsed("https://github.com/apple/swift-markdown?tab=readme-ov-file") == "apple/swift-markdown",
+      parsed("https://github.com/apple/swift-markdown?tab=readme-ov-file"))
+check("…and a fragment",
+      parsed("https://github.com/apple/swift-markdown#readme") == "apple/swift-markdown")
+check("www. is accepted", parsed("https://www.github.com/a-b/c.d") == "a-b/c.d")
+check("a deeper path keeps the repository", parsed("github.com/apple/swift-markdown/tree/main")
+      == "apple/swift-markdown")
+check(".git is dropped", parsed("https://github.com/apple/swift-markdown.git") == "apple/swift-markdown")
+check("a bare name is refused", parsed("swift-markdown") == "nil")
+check("another host is refused", parsed("https://gitlab.com/a/b") == "nil")
+check("'..' is refused as a repository", parsed("a/..") == "nil")
+check("spaces are refused", parsed("my org/repo") == "nil")
+
+// MARK: Offline: what GitHub's refusals mean
+
+func response(_ status: Int, _ headers: [String: String] = [:]) -> HTTPURLResponse {
+    HTTPURLResponse(url: URL(string: "https://api.github.com/x")!, statusCode: status,
+                    httpVersion: nil, headerFields: headers)!
+}
+func body(_ message: String) -> Data { Data("{\"message\":\(String(reflecting: message))}".utf8) }
+func describe(_ error: Error) -> String { String(describing: error) }
+
+check("a stale sha is a conflict",
+      describe(GitHubStore.error(for: response(409), body: body("README.md is at abc but expected def"), writing: true))
+        == describe(DocumentStoreError.versionConflict))
+check("a missing sha is a conflict",
+      describe(GitHubStore.error(for: response(422), body: body("Invalid request.\n\n\"sha\" wasn't supplied."), writing: true))
+        == describe(DocumentStoreError.versionConflict))
+let protected = GitHubStore.error(for: response(409),
+                                  body: body("Repository rule violations found\n\nChanges must be made through a pull request."),
+                                  writing: true)
+check("a protected branch is a refusal, not a conflict",
+      { if case RemoteStoreError.rejected = protected { return true }; return false }(),
+      describe(protected))
+check("a secondary rate limit on a write is a rate limit",
+      describe(GitHubStore.error(for: response(403, ["retry-after": "60"]), body: body("You have exceeded a secondary rate limit"), writing: true))
+        == describe(RemoteStoreError.rateLimited))
+check("a secondary rate limit on a read doesn't sign the account out",
+      describe(GitHubStore.error(for: response(403), body: body("You have exceeded a secondary rate limit"), writing: false))
+        == describe(RemoteStoreError.rateLimited))
+check("429 is a rate limit",
+      describe(GitHubStore.error(for: response(429), body: Data(), writing: false))
+        == describe(RemoteStoreError.rateLimited))
+check("a plain 403 on a write is read-only",
+      describe(GitHubStore.error(for: response(403), body: body("Resource not accessible"), writing: true))
+        == describe(RemoteStoreError.readOnly))
+check("a 409 on a read is not a conflict",
+      describe(GitHubStore.error(for: response(409), body: body("Git Repository is empty."), writing: false))
+        == describe(RemoteStoreError.server(status: 409)))
+
 func main() async {
     do {
         let root = try await store.children(of: id(""))

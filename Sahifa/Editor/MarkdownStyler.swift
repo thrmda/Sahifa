@@ -72,7 +72,11 @@ final class MarkdownStyler {
     func restyle(_ storage: NSTextStorage) {
         let text = storage.string
         let base: NSAttributedString
-        if text == cachedText, theme == cachedTheme, let cachedBase {
+        // Literal comparison: Swift's == calls canonically equivalent strings
+        // equal, and reusing a result styled for the other form (a different
+        // UTF-16 length) wrote that older text back over the edit.
+        if let cachedText, (text as NSString).isEqual(to: cachedText),
+           theme == cachedTheme, let cachedBase {
             base = cachedBase
         } else {
             let styled = styledAttributedString(for: text)
@@ -208,15 +212,39 @@ struct SourceMap {
     private let lines: [Substring]
     private let lineStartUTF16: [Int]
 
+    /// Lines end where cmark ends them: at LF, CRLF or a lone CR. Splitting
+    /// on the Character "\n" missed CRLF entirely (Swift treats "\r\n" as
+    /// one Character, not equal to "\n"), so a Windows file was one long
+    /// line and nothing after its first line was styled.
     init(text: String) {
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        var lines: [Substring] = []
         var starts: [Int] = []
-        starts.reserveCapacity(lines.count)
-        var position = 0
-        for line in lines {
-            starts.append(position)
-            position += line.utf16.count + 1
+        let units = text.utf16
+        var lineStart = units.startIndex
+        var lineStartOffset = 0
+        var offset = 0
+        var index = units.startIndex
+        while index < units.endIndex {
+            let unit = units[index]
+            guard unit == 10 || unit == 13 else {
+                index = units.index(after: index)
+                offset += 1
+                continue
+            }
+            lines.append(text[lineStart..<index])
+            starts.append(lineStartOffset)
+            var next = units.index(after: index)
+            offset += 1
+            if unit == 13, next < units.endIndex, units[next] == 10 {
+                next = units.index(after: next)
+                offset += 1
+            }
+            index = next
+            lineStart = next
+            lineStartOffset = offset
         }
+        lines.append(text[lineStart..<units.endIndex])
+        starts.append(lineStartOffset)
         self.lines = lines
         self.lineStartUTF16 = starts
     }

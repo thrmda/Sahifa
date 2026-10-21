@@ -88,14 +88,14 @@ func run() async {
     w.openInNewTab(id("a.md"))
     w.openInNewTab(id("b.md"))
     check("reopened two tabs", w.openTabs == [id("a.md"), id("b.md")])
-    let renamed = await model.rename(id("a.md"), to: "renamed")
+    let renamed = try? await model.rename(id("a.md"), to: "renamed")
     check("rename produced the new id", renamed == id("renamed.md"), String(describing: renamed))
     check("the inactive tab remapped in place", w.openTabs == [id("renamed.md"), id("b.md")])
     check("…and the active tab was untouched", w.selection == id("b.md"))
 
     // Renaming the active file follows in both the tab and the selection.
     w.selection = id("renamed.md")
-    _ = await model.rename(id("renamed.md"), to: "again")
+    _ = try? await model.rename(id("renamed.md"), to: "again")
     check("renaming the active file remaps its selection", w.selection == id("again.md"))
     check("…and its tab", w.openTabs == [id("again.md"), id("b.md")])
 
@@ -107,7 +107,7 @@ func run() async {
     w.selection = id("b.md")
     w.selection = id(delName)
     check("two tabs before the delete", w.openTabs == [id("b.md"), id(delName)])
-    await model.delete(id(delName))
+    try? await model.delete(id(delName))
     check("deleting the active file drops its tab", w.openTabs == [id("b.md")])
     check("…and moves to the surviving tab", w.selection == id("b.md"))
 

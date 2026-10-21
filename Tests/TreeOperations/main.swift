@@ -61,21 +61,21 @@ func fileOperations() async {
     check("source lists the tree root", model.children(of: docID(""))?.isEmpty == false)
 
     // Rename a file, keeping the extension the user didn't type.
-    let renamed = await model.rename(docID("root.md"), to: "renamed")
+    let renamed = try? await model.rename(docID("root.md"), to: "renamed")
     check("rename returns the new id", renamed == docID("renamed.md"), String(describing: renamed))
     check("…the file moved on disk", exists("renamed.md") && !exists("root.md"))
 
     // Rename with an explicit extension is taken as given.
-    let explicit = await model.rename(docID("spare.md"), to: "kept.markdown")
+    let explicit = try? await model.rename(docID("spare.md"), to: "kept.markdown")
     check("an explicit extension is honoured", explicit == docID("kept.markdown"))
     check("…and moved on disk", exists("kept.markdown") && !exists("spare.md"))
 
     // Rejections.
-    check("empty name refused", await model.rename(docID("renamed.md"), to: "   ") == nil)
-    check("slash refused", await model.rename(docID("renamed.md"), to: "a/b.md") == nil)
-    check("dotfile refused", await model.rename(docID("renamed.md"), to: ".hidden") == nil)
+    check("empty name refused", (try? await model.rename(docID("renamed.md"), to: "   ")) == nil)
+    check("slash refused", (try? await model.rename(docID("renamed.md"), to: "a/b.md")) == nil)
+    check("dotfile refused", (try? await model.rename(docID("renamed.md"), to: ".hidden")) == nil)
     check("collision refused",
-          await model.rename(docID("renamed.md"), to: "kept.markdown") == nil)
+          (try? await model.rename(docID("renamed.md"), to: "kept.markdown")) == nil)
     check("…and nothing moved", exists("renamed.md") && exists("kept.markdown"))
 
     // Rename a folder: every descendant id has to move with it.
@@ -83,7 +83,7 @@ func fileOperations() async {
     let token = model.documentMoved.sink { moves.append($0) }
     model.loadChildren(of: docID("projects"))
     model.loadChildren(of: docID("projects/alpha"))
-    let folder = await model.rename(docID("projects"), to: "work")
+    let folder = try? await model.rename(docID("projects"), to: "work")
     check("folder rename returns the new id", folder == docID("work"))
     check("…the folder moved on disk",
           exists("work/alpha/deep.md") && !exists("projects/plan.md"))
@@ -118,8 +118,75 @@ func fileOperations() async {
               window.selection == already, String(describing: window.selection))
     }
 
+    // A dot in the new name isn't an extension unless Sahifa opens it: the
+    // file keeps .md rather than becoming a ".0" file the tree won't list.
+    let dotted = try? await model.rename(docID("renamed.md"), to: "Release 1.0")
+    check("a dotted name keeps the extension", dotted == docID("Release 1.0.md"),
+          String(describing: dotted))
+    _ = try? await model.rename(docID("Release 1.0.md"), to: "renamed")
+    check("…and renames back", exists("renamed.md"))
+    check("a folder takes its new name exactly",
+          (try? AppModel.renamedName("archive", from: "v1.2", isDirectory: true)) == "archive")
+    check("a file renamed to another openable type takes it",
+          (try? AppModel.renamedName("data.csv", from: "notes.md", isDirectory: false)) == "data.csv")
+    check("a colon is refused",
+          (try? AppModel.renamedName("a:b", from: "notes.md", isDirectory: false)) == nil)
+
+    // Refusals say why, so the sidebar can show it.
+    do {
+        _ = try await model.rename(docID("renamed.md"), to: "KEPT.markdown")
+        check("a name differing only in case is refused", false)
+    } catch {
+        check("a name differing only in case is refused",
+              error as? OrganiseError == .nameTaken("KEPT.markdown"), "\(error)")
+    }
+    do {
+        _ = try await model.rename(docID("renamed.md"), to: "  ")
+        check("an empty name throws invalidName", false)
+    } catch {
+        check("an empty name throws invalidName", error as? OrganiseError == .invalidName)
+    }
+
+    // Edits typed just before a rename land in the renamed file, and the old
+    // model never writes the old name back.
+    do {
+        guard let doc = model.document(for: docID("renamed.md")) else {
+            check("open renamed.md", false); return
+        }
+        doc.text = "# typed before the rename\n"
+        let moved = try? await model.rename(docID("renamed.md"), to: "moved")
+        check("rename with unsaved edits succeeds", moved == docID("moved.md"))
+        let onDisk = try? String(contentsOf: root.appendingPathComponent("moved.md"), encoding: .utf8)
+        check("…the edits reached the renamed file", onDisk == "# typed before the rename\n",
+              String(describing: onDisk))
+        // What a window does with its outgoing document when it switches.
+        doc.text += "late\n"
+        doc.saveNow()
+        await doc.waitForSave()
+        check("…the old model can't recreate the old name", !exists("renamed.md"))
+        _ = try? await model.rename(docID("moved.md"), to: "renamed")
+    }
+
+    // Trashing a document with unsaved edits must not bring it back. The old
+    // model used to save on the way out and recreate the file in place.
+    do {
+        let doomedName = "\(stamp)-doomed.md"
+        write(doomedName)
+        model.loadChildren(of: docID(""), force: true)
+        guard let doc = model.document(for: docID(doomedName)) else {
+            check("open the doomed file", false); return
+        }
+        doc.text = "# unsaved\n"
+        try? await model.delete(docID(doomedName))
+        check("a dirty document is trashed", !exists(doomedName))
+        doc.saveNow()
+        await doc.waitForSave()
+        await doc.flush()
+        check("…and stays trashed when the old model saves", !exists(doomedName))
+    }
+
     // Delete (local → Trash).
-    await model.delete(docID("kept.markdown"))
+    try? await model.delete(docID("kept.markdown"))
     check("delete removes the file", !exists("kept.markdown"))
     check("…and announced a deletion",
           moves.last?.from == docID("kept.markdown") && moves.last?.to == nil)
@@ -127,7 +194,7 @@ func fileOperations() async {
           !model.deletionNeedsConfirmation(docID("renamed.md")))
 
     // New file, through the store now.
-    let created = await model.newFile(in: docID(""))
+    let created = try? await model.newFile(in: docID(""))
     check("a new file is created", created != nil, String(describing: created))
     check("…and exists on disk",
           created.map { exists(($0.path as NSString).lastPathComponent) } == true)

@@ -36,14 +36,34 @@ extension BidiTextView {
     @objc func sahifaInsertCodeBlock(_ sender: Any?) {
         let ns = string as NSString
         let paragraphs = ns.paragraphRange(for: selectedRange())
-        let content = ns.substring(with: paragraphs)
-        var body = content
-        if body.isEmpty || body == "\n" { body = "\n" }
-        else if !body.hasSuffix("\n") { body += "\n" }
-        let fenced = "```\n" + body + "```\n"
-        // Caret at the end of the wrapped content (just before its newline).
-        let caret = paragraphs.location + 4 + (body as NSString).length - 1
+        let lineBreak = documentLineBreak
+        var body = ns.substring(with: paragraphs)
+        // Checked by code unit: "\r\n" is a single Character in Swift, so
+        // hasSuffix("\n") is false for a CRLF line and a second break got added.
+        let trailing = Self.trailingLineBreakLength(of: body)
+        if (body as NSString).length == trailing { body = lineBreak }
+        else if trailing == 0 { body += lineBreak }
+        let fence = "```"
+        let fenced = fence + lineBreak + body + fence + lineBreak
+        // Caret at the end of the wrapped content (just before its line break).
+        let caret = paragraphs.location + (fence + lineBreak + body as NSString).length
+            - Self.trailingLineBreakLength(of: body)
         replace(paragraphs, with: fenced, selecting: NSRange(location: caret, length: 0))
+    }
+
+    /// The document's own line ending, so an inserted block doesn't leave a
+    /// CRLF file with a mix.
+    private var documentLineBreak: String {
+        (string as NSString).range(of: "\r\n").location != NSNotFound ? "\r\n" : "\n"
+    }
+
+    /// UTF-16 length of the line break `text` ends with: 2 for CRLF, 1 for LF
+    /// or CR, 0 for none.
+    private static func trailingLineBreakLength(of text: String) -> Int {
+        let units = Array(text.utf16.suffix(2))
+        if units == [13, 10] { return 2 }
+        if let last = units.last, last == 10 || last == 13 { return 1 }
+        return 0
     }
 
     @objc func sahifaInsertLink(_ sender: Any?) {
@@ -82,7 +102,7 @@ extension BidiTextView {
     /// doesn't split into at least two columns is left alone.
     @objc func sahifaConvertSelectionToTable(_ sender: Any?) {
         let selection = selectedRange()
-        let rows = DelimitedText(parsing: (string as NSString).substring(with: selection)).rows
+        let rows = Self.tableRows(from: (string as NSString).substring(with: selection))
         guard selection.length > 0, (rows.map(\.count).max() ?? 0) >= 2 else {
             NSSound.beep()
             return
@@ -103,12 +123,22 @@ extension BidiTextView {
             NSSound.beep()
             return
         }
-        let rows = DelimitedText(parsing: text, delimiter: tabSeparated != nil ? .tab : nil).rows
-        guard !rows.isEmpty else {
+        let rows = tabSeparated != nil
+            ? DelimitedText(parsing: text, delimiter: .tab).rows
+            : Self.tableRows(from: text)
+        // One column is prose, not a table; say so rather than box it up.
+        guard (rows.map(\.count).max() ?? 0) >= 2 else {
             NSSound.beep()
             return
         }
         insertBlock(MarkdownTable.markdown(from: rows), replacing: selectedRange())
+    }
+
+    /// Rows from text that is either delimited or already a Markdown table.
+    private static func tableRows(from text: String) -> [[String]] {
+        MarkdownTable.looksLikeMarkdownTable(text)
+            ? MarkdownTable.rows(fromSource: text)
+            : DelimitedText(parsing: text).rows
     }
 
     @discardableResult
@@ -153,7 +183,7 @@ extension BidiTextView {
         let ns = string as NSString
         // In the document's own line endings, so a CRLF file doesn't come out
         // with a mix.
-        let lineBreak = ns.range(of: "\r\n").location != NSNotFound ? "\r\n" : "\n"
+        let lineBreak = documentLineBreak
         let atStart = range.location == 0
         let atEnd = NSMaxRange(range) == ns.length
         let before = atStart ? 2 : lineBreaks(in: ns, endingAt: range.location)
@@ -218,20 +248,29 @@ extension BidiTextView {
         let sel = selectedRange()
 
         // The selection itself starts and ends with the delimiter → strip it.
+        // Only when nothing inside repeats it: "*a* and *b*" is two runs, not
+        // one, and "**word**" under ⌘I is bold to add italic to, not italic
+        // to remove.
         if sel.length >= 2 * d {
             let selected = ns.substring(with: sel)
             if selected.hasPrefix(delimiter), selected.hasSuffix(delimiter) {
                 let inner = String(selected.dropFirst(delimiter.count).dropLast(delimiter.count))
-                replace(sel, with: inner,
-                        selecting: NSRange(location: sel.location, length: (inner as NSString).length))
-                return
+                if !inner.contains(delimiter) {
+                    replace(sel, with: inner,
+                            selecting: NSRange(location: sel.location, length: (inner as NSString).length))
+                    return
+                }
             }
         }
 
         // Delimiters sit immediately outside the selection → remove them.
+        // For italic the run of asterisks on each side has to be odd: "**"
+        // around a word is bold, and its inner "*" isn't an italic marker.
         if sel.location >= d, NSMaxRange(sel) + d <= ns.length,
            ns.substring(with: NSRange(location: sel.location - d, length: d)) == delimiter,
-           ns.substring(with: NSRange(location: NSMaxRange(sel), length: d)) == delimiter {
+           ns.substring(with: NSRange(location: NSMaxRange(sel), length: d)) == delimiter,
+           delimiter != "*" || (Self.asteriskRun(in: ns, endingAt: sel.location) % 2 == 1
+                                && Self.asteriskRun(in: ns, startingAt: NSMaxRange(sel)) % 2 == 1) {
             let outer = NSRange(location: sel.location - d, length: sel.length + 2 * d)
             let inner = ns.substring(with: sel)
             replace(outer, with: inner,
@@ -243,6 +282,18 @@ extension BidiTextView {
         let wrapped = delimiter + ns.substring(with: sel) + delimiter
         replace(sel, with: wrapped,
                 selecting: NSRange(location: sel.location + d, length: sel.length))
+    }
+
+    private static func asteriskRun(in ns: NSString, endingAt end: Int) -> Int {
+        var count = 0
+        while end - count > 0, ns.character(at: end - count - 1) == 42 { count += 1 }
+        return count
+    }
+
+    private static func asteriskRun(in ns: NSString, startingAt start: Int) -> Int {
+        var count = 0
+        while start + count < ns.length, ns.character(at: start + count) == 42 { count += 1 }
+        return count
     }
 
     // MARK: Headings
@@ -280,7 +331,7 @@ extension BidiTextView {
                 index = line.index(after: index)
             }
             var prefixLength = 0
-            if hashes > 0, index == line.endIndex || line[index] == " " || line[index] == "\n" {
+            if hashes > 0, index == line.endIndex || line[index] == " " || line[index].isNewline {
                 while index < line.endIndex, line[index] == " " {
                     index = line.index(after: index)
                 }
@@ -359,8 +410,8 @@ extension BidiTextView {
         applyParagraphEdits(edits, spanning: selection)
     }
 
-    /// Applies paragraph edits — computed in document order — back to front so
-    /// earlier ranges stay valid, then puts the user's selection back.
+    /// Applies paragraph edits, computed in document order and not
+    /// overlapping, then puts the user's selection back.
     ///
     /// Restoring it is the point. Each `replace` moves the insertion point to
     /// its own edit, so without this the selection collapses into whichever
@@ -378,9 +429,19 @@ extension BidiTextView {
             totalDelta += delta
             if NSMaxRange(range) <= original.location { deltaBeforeCaret += delta }
         }
-        for (range, replacement) in edits.reversed() {
-            replace(range, with: replacement, selecting: nil)
+        // One change for the whole span, not one per paragraph: every change
+        // re-renders the document, so toggling a list over 500 lines took
+        // the best part of a minute. It also makes the toggle a single undo.
+        let ns = string as NSString
+        let first = edits[0].0.location
+        var rebuilt = ""
+        var cursor = first
+        for (range, replacement) in edits {
+            rebuilt += ns.substring(with: NSRange(location: cursor, length: range.location - cursor))
+            rebuilt += replacement
+            cursor = NSMaxRange(range)
         }
+        replace(NSRange(location: first, length: cursor - first), with: rebuilt, selecting: nil)
         let limit = (string as NSString).length
         if original.length == 0 {
             let caret = min(max(0, original.location + deltaBeforeCaret), limit)

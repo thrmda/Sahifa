@@ -31,6 +31,16 @@ struct ContentView: View {
         }
         .environmentObject(windowState)
         .focusedSceneObject(windowState)
+        // A rename, delete or new file that didn't happen says why, here in
+        // the window that asked for it.
+        .alert(Text("That didn't work"),
+               isPresented: Binding(get: { windowState.operationError != nil },
+                                    set: { if !$0 { windowState.operationError = nil } }),
+               presenting: windowState.operationError) { _ in
+            Button("OK", role: .cancel) {}
+        } message: { reason in
+            Text(verbatim: reason)
+        }
         .navigationTitle(Text(verbatim: windowState.document?.displayName ?? "Sahifa"))
         // Finder-style drops anywhere on the window open the file/folder.
         // Drops can land on a non-key window, so target THIS window's state.
@@ -89,11 +99,7 @@ struct ContentView: View {
                 }
                 .help(Text("Open File…"))
                 Button {
-                    Task {
-                        if let id = await model.newFile(in: windowState.newFileTarget) {
-                            windowState.selection = id
-                        }
-                    }
+                    windowState.newFile()
                 } label: {
                     Label("New File", systemImage: "square.and.pencil")
                 }
@@ -434,7 +440,7 @@ private struct ReadOnlyBanner: View {
                     Button("Reopen as Arabic (Windows-1256)") { document.reopenAsWindows1256() }
                 }
             } else {
-                Text("Read-only. Saving to this source isn't supported yet.")
+                Text("Read-only. Connect a GitHub account in Settings to save changes.")
                 Spacer(minLength: 0)
             }
         }
@@ -542,8 +548,9 @@ struct DocumentEditorView: View {
     var body: some View {
         VStack(spacing: 0) {
             // Every button is a Markdown edit, which in a CSV file would only
-            // put markup into the data.
-            if showFormatBar, document.kind == .markdown {
+            // put markup into the data, and needs an editor that takes edits.
+            if showFormatBar, document.kind == .markdown, !document.isReadOnly,
+               document.loadState == .ready, windowState.activeViewMode.showsEditor {
                 FormatBarView()
                 Divider()
             }

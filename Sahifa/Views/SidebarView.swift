@@ -38,8 +38,10 @@ struct SidebarView: View {
                 List(selection: Binding(
                     get: { windowState.selection },
                     set: { newValue in
+                        // Clicking empty space (or ⌘-clicking the row) clears
+                        // the List's selection; that shouldn't blank the editor
+                        // while its tabs stay open, so only real picks route.
                         if let newValue { windowState.showInCurrentTab(newValue) }
-                        else { windowState.selection = nil }
                     }
                 )) {
                     ForEach(model.sources) { source in
@@ -100,11 +102,7 @@ struct SidebarView: View {
                 .accessibilityLabel(Text("Open File…"))
                 .pointerCursor(.pointingHand)
                 Button {
-                    Task {
-                        if let id = await model.newFile(in: windowState.newFileTarget) {
-                            windowState.selection = id
-                        }
-                    }
+                    windowState.newFile()
                 } label: {
                     Image(systemName: "square.and.pencil")
                 }
@@ -358,7 +356,7 @@ private struct NodeLabel: View {
     private var isLocal: Bool { model.source(node.id.sourceID)?.isLocal ?? false }
     /// Rename, delete and New File Here work wherever the source is writable —
     /// a local folder or a connected repository, but not loose files.
-    private var canOrganise: Bool { model.canOrganise(node.id) }
+    private var canOrganise: Bool { model.canOrganise(node.id, isDirectory: node.isDirectory) }
     @State private var confirmingDelete = false
     private var isRenaming: Bool { windowState.renaming == node.id }
 
@@ -408,10 +406,10 @@ private struct NodeLabel: View {
                     }
                 }
             }
-            if node.isDirectory && canOrganise {
+            if node.isDirectory && model.canCreate(in: node.id) {
                 Button("New File Here") {
-                    Task {
-                        if let id = await model.newFile(in: node.id) {
+                    windowState.run {
+                        if let id = try await model.newFile(in: node.id) {
                             windowState.expanded.insert(node.id)
                             windowState.selection = id
                         }
@@ -431,7 +429,7 @@ private struct NodeLabel: View {
                     if model.deletionNeedsConfirmation(node.id) {
                         confirmingDelete = true
                     } else {
-                        Task { await model.delete(node.id) }
+                        windowState.run { try await model.delete(node.id) }
                     }
                 }
             }
@@ -439,7 +437,7 @@ private struct NodeLabel: View {
         // A repository delete is a commit, not the Trash, so it confirms first.
         .confirmationDialog(deletePrompt, isPresented: $confirmingDelete) {
             Button("Delete", role: .destructive) {
-                Task { await model.delete(node.id) }
+                windowState.run { try await model.delete(node.id) }
             }
             Button("Cancel", role: .cancel) {}
         }
@@ -453,6 +451,13 @@ private struct NodeLabel: View {
     }
 
     private func beginRename() {
+        // Another row still being renamed keeps what was typed into it: the
+        // field it loses focus from can't commit once `renaming` has moved on.
+        if let pending = windowState.renaming, pending != node.id {
+            let text = windowState.renameText
+            windowState.renaming = nil
+            if text != pending.name { rename(pending, to: text) }
+        }
         windowState.renameText = node.name
         windowState.renaming = node.id
     }
@@ -461,8 +466,12 @@ private struct NodeLabel: View {
         let newName = windowState.renameText
         windowState.renaming = nil
         guard newName != node.name else { return }
-        Task {
-            if let renamed = await model.rename(node.id, to: newName),
+        rename(node.id, to: newName)
+    }
+
+    private func rename(_ id: DocumentID, to newName: String) {
+        windowState.run {
+            if let renamed = try await model.rename(id, to: newName),
                windowState.selection == nil {
                 windowState.selection = renamed
             }

@@ -31,7 +31,7 @@ enum MarkdownHTMLRenderer {
         page(title: "Preview",
              bodyContent: "",
              script: """
-             <script>
+             <script nonce="\(scriptNonce)">
              function sahifaRender(html, resetScroll) {
                document.getElementById("sahifa-content").innerHTML = html;
                if (resetScroll) {
@@ -74,6 +74,7 @@ enum MarkdownHTMLRenderer {
         <html>
         <head>
         <meta charset="utf-8">
+        <meta http-equiv="Content-Security-Policy" content="\(contentSecurityPolicy(scripted: !script.isEmpty))">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>\(escapeHTML(title))</title>
         <style>\(fontFaceCSS)\(css)</style>
@@ -86,6 +87,44 @@ enum MarkdownHTMLRenderer {
         </body>
         </html>
         """
+    }
+
+    // MARK: Content security
+
+    /// Markdown passes raw HTML through, so a document can carry a script, an
+    /// `onerror` handler or a `javascript:` link. In the preview that runs in
+    /// a web view the app keeps across documents, and can navigate it away or
+    /// read every document shown after; in an exported file it runs for
+    /// whoever opens it. The page therefore runs no script but its own: the
+    /// shell's, which carries this nonce. Raw HTML, images, fonts and styles
+    /// still render. (The app's own `evaluateJavaScript` calls are not
+    /// subject to the policy.)
+    static let scriptNonce = UUID().uuidString.replacingOccurrences(of: "-", with: "")
+
+    static func contentSecurityPolicy(scripted: Bool) -> String {
+        [
+            "default-src 'none'",
+            "style-src 'unsafe-inline'",
+            "font-src data:",
+            "img-src * data: blob:",
+            "media-src * data: blob:",
+            "script-src " + (scripted ? "'nonce-\(scriptNonce)'" : "'none'"),
+            "base-uri 'none'",
+            "form-action 'none'",
+        ].joined(separator: "; ")
+    }
+
+    /// Drops a URL that would run script when followed, for pages opened
+    /// outside the app as much as inside it. Browsers ignore whitespace and
+    /// control characters inside a scheme ("java\tscript:"), so the check
+    /// does too.
+    static func safeURL(_ raw: String, isImage: Bool = false) -> String {
+        let scheme = String(raw.lowercased().unicodeScalars.filter {
+            !CharacterSet.whitespacesAndNewlines.contains($0) && !CharacterSet.controlCharacters.contains($0)
+        })
+        if scheme.hasPrefix("javascript:") || scheme.hasPrefix("vbscript:") { return "#" }
+        if scheme.hasPrefix("data:") && !(isImage && scheme.hasPrefix("data:image/")) { return "#" }
+        return raw
     }
 
     // MARK: Embedded fonts
@@ -396,12 +435,12 @@ private struct HTMLVisitor: MarkupVisitor {
     }
 
     mutating func visitLink(_ link: Markdown.Link) -> String {
-        let href = escapeHTML(link.destination ?? "#")
+        let href = escapeHTML(MarkdownHTMLRenderer.safeURL(link.destination ?? "#"))
         return "<a href=\"\(href)\">\(children(link))</a>"
     }
 
     mutating func visitImage(_ image: Markdown.Image) -> String {
-        let src = escapeHTML(image.source ?? "")
+        let src = escapeHTML(MarkdownHTMLRenderer.safeURL(image.source ?? "", isImage: true))
         let alt = escapeHTML(image.plainText)
         return "<img src=\"\(src)\" alt=\"\(alt)\">"
     }
