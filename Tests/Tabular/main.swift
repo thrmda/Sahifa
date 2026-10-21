@@ -65,6 +65,12 @@ func detection() {
     check("a title line above the table doesn't throw it",
           detect("Report\na;b;c\n1;2;3\n4;5;6\n") == .semicolon)
     check("a single column falls back to commas", detect("one\ntwo\n") == .comma)
+    check("decimal commas with no header still split on semicolons",
+          detect("1,5;2,25\n3,0;4,75") == .semicolon)
+    check("pasted cells with thousands separators split on tabs",
+          detect("A\t1,000\nB\t2,500") == .tab)
+    check("a single tab-separated row splits on the tab",
+          detect("Ali\tSmith, Jr.") == .tab)
     check("an empty file falls back to commas", detect("") == .comma)
     check("an explicit delimiter overrides detection",
           DelimitedText(parsing: "a,b\tc", delimiter: .tab).rows == [["a,b", "c"]])

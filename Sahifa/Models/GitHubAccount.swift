@@ -38,6 +38,10 @@ final class GitHubAccount: ObservableObject {
     private let keychainAccount: String
     private let loginKey: String
     private let expiryKey: String
+    /// The stored credential, read from the Keychain once. Every sidebar row
+    /// asks whether its source is writable, and each of those used to be a
+    /// Keychain query of its own.
+    private var storedToken: String?
 
     /// Names are injected rather than hard-coded so a test can operate on a
     /// throwaway credential. The keychain is shared with every process running
@@ -48,7 +52,8 @@ final class GitHubAccount: ObservableObject {
         self.keychainAccount = keychainAccount
         self.loginKey = loginKey
         self.expiryKey = expiryKey
-        guard Keychain.get(keychainAccount) != nil else { return }
+        storedToken = Keychain.get(keychainAccount)
+        guard storedToken != nil else { return }
         let login = UserDefaults.standard.string(forKey: loginKey)
         state = .connected(login: login)
         expiry = UserDefaults.standard.object(forKey: expiryKey) as? Date
@@ -71,8 +76,12 @@ final class GitHubAccount: ObservableObject {
     /// which still works for public repositories.
     var token: String? {
         guard case .connected = state else { return nil }
-        return Keychain.get(keychainAccount)
+        return storedToken
     }
+
+    /// A credential is kept, whatever state it's in. An expired or refused one
+    /// still has to be removable, or it comes back as connected next launch.
+    var hasStoredCredential: Bool { storedToken != nil }
 
     /// Verifies a credential before storing it, so a mistyped or already
     /// expired token fails here with a clear message rather than silently
@@ -88,6 +97,7 @@ final class GitHubAccount: ObservableObject {
                     "The token couldn't be saved to your Keychain, so it wasn't kept."))
                 return
             }
+            storedToken = trimmed
             UserDefaults.standard.set(login, forKey: loginKey)
             if let expires {
                 UserDefaults.standard.set(expires, forKey: expiryKey)
@@ -103,6 +113,7 @@ final class GitHubAccount: ObservableObject {
 
     func disconnect() {
         Keychain.remove(keychainAccount)
+        storedToken = nil
         UserDefaults.standard.removeObject(forKey: loginKey)
         UserDefaults.standard.removeObject(forKey: expiryKey)
         expiry = nil

@@ -9,29 +9,32 @@ import AppKit
 @MainActor
 enum RepositoryPrompt {
     static func show(_ model: AppModel) {
-        let alert = NSAlert()
-        alert.messageText = String(localized: "Add a GitHub Repository")
-        alert.informativeText = String(localized:
-            "Enter it as owner/repository - for example apple/swift-markdown. Public repositories can be read without signing in; the files are opened read-only.")
-        alert.addButton(withTitle: String(localized: "Add"))
-        alert.addButton(withTitle: String(localized: "Cancel"))
+        var entry = ""
+        var problem: String?
+        // Asks again, keeping what was typed, until it names a repository or
+        // the user cancels: an Add that silently did nothing read as broken.
+        while true {
+            let alert = NSAlert()
+            alert.messageText = String(localized: "Add a GitHub Repository")
+            alert.informativeText = problem ?? String(localized:
+                "Enter it as owner/repository, or paste its address - for example apple/swift-markdown. Public repositories can be read without signing in; connect an account in Settings to save changes.")
+            alert.addButton(withTitle: String(localized: "Add"))
+            alert.addButton(withTitle: String(localized: "Cancel"))
 
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
-        field.placeholderString = "owner/repository"
-        alert.accessoryView = field
-        alert.window.initialFirstResponder = field
+            let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+            field.placeholderString = "owner/repository"
+            field.stringValue = entry
+            alert.accessoryView = field
+            alert.window.initialFirstResponder = field
 
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        // Accept a pasted URL as readily as the short form.
-        var entry = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        for prefix in ["https://github.com/", "http://github.com/", "github.com/"]
-        where entry.hasPrefix(prefix) {
-            entry = String(entry.dropFirst(prefix.count))
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            entry = field.stringValue
+            if let repository = GitHubStore.parseRepository(entry) {
+                model.addRepository(owner: repository.owner, name: repository.name, branch: nil)
+                return
+            }
+            problem = String(localized:
+                "That isn't a repository name. Enter it as owner/repository, for example apple/swift-markdown.")
         }
-        if entry.hasSuffix(".git") { entry = String(entry.dropLast(4)) }
-
-        let parts = entry.split(separator: "/").map(String.init)
-        guard parts.count >= 2 else { return }
-        model.addRepository(owner: parts[0], name: parts[1], branch: nil)
     }
 }

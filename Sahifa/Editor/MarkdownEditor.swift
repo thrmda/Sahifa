@@ -109,11 +109,17 @@ struct MarkdownEditor: NSViewRepresentable {
 
         var needsRestyle = false
 
-        if textView.string != text {
-            let selection = textView.selectedRange()
-            textView.string = text
-            let length = (text as NSString).length
-            textView.setSelectedRange(NSRange(location: min(selection.location, length), length: 0))
+        if coordinator.adoptExternalText(text) {
+            needsRestyle = true
+        }
+
+        // A document can become editable while open (converted to UTF-8), or
+        // stop being so (reloaded as something it can't save faithfully).
+        if textView.isEditable != isEditable {
+            textView.isEditable = isEditable
+        }
+        if coordinator.styler.parsesMarkdown != isMarkdown {
+            coordinator.styler.parsesMarkdown = isMarkdown
             needsRestyle = true
         }
 
@@ -182,6 +188,29 @@ struct MarkdownEditor: NSViewRepresentable {
                 : nil
             guard styler.focusParagraph != paragraph else { return false }
             styler.focusParagraph = paragraph
+            return true
+        }
+
+        /// Puts the document's text into the editor when it changed somewhere
+        /// else: another window on the same file, a reload from disk. Returns
+        /// whether anything changed.
+        ///
+        /// Compared as UTF-16, not as Swift Strings: those count canonically
+        /// equivalent text as equal ("é" and "e" + U+0301), which would leave
+        /// the editor showing one form while the document holds the other.
+        /// Never in the middle of a composition: the model doesn't have the
+        /// marked text yet, and replacing it would throw the input away.
+        func adoptExternalText(_ text: String) -> Bool {
+            guard let textView, !textView.hasMarkedText(),
+                  !(textView.string as NSString).isEqual(to: text) else { return false }
+            let selection = textView.selectedRange()
+            textView.string = text
+            // Undo steps recorded against the old text point at ranges that
+            // no longer exist; replaying one raised an out-of-bounds exception
+            // that took the app down.
+            textView.undoManager?.removeAllActions()
+            let length = (text as NSString).length
+            textView.setSelectedRange(NSRange(location: min(selection.location, length), length: 0))
             return true
         }
 

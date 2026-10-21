@@ -82,12 +82,25 @@ final class DocumentModel: ObservableObject, Identifiable {
     private var retryDelayNanos: UInt64 = DocumentModel.initialRetryNanos
     var hasUnsavedChanges: Bool { text != savedText }
 
-    private let store: any DocumentStore
+    /// Replaced, not fixed, so a credential connected or removed while the
+    /// document is open takes effect on its next save (`replaceStore`).
+    private var store: any DocumentStore
     private var savedText: String
     private var version: VersionToken?
     /// What the document was read in, and so what it's written back in.
     private var encoding: TextEncoding = .utf8
     private var cancellable: AnyCancellable?
+    /// An autosave came due while a save was in flight. Skipped at the time,
+    /// so it runs as soon as that save lands rather than waiting for the next
+    /// keystroke.
+    private var saveRequestedWhileSaving = false
+    /// Set once the document has been renamed, moved or deleted: this model
+    /// still addresses the old place, so nothing it holds may be written there.
+    /// A write would recreate the file the user just trashed or renamed.
+    private(set) var isDetached = false
+    /// Unsaved text handed over from the model this one replaced (a rename),
+    /// waiting for a document that is still loading.
+    private var adoptedText: String?
 
     var displayName: String { id.name }
 
@@ -139,6 +152,10 @@ final class DocumentModel: ObservableObject, Identifiable {
             undecodedData = contents.undecodedData
             isShownAsWindows1256 = false
             loadState = .ready
+            if let adopted = adoptedText {
+                adoptedText = nil
+                adoptUnsavedText(adopted)
+            }
         } catch {
             loadState = .failed(error.localizedDescription)
         }
@@ -153,25 +170,87 @@ final class DocumentModel: ObservableObject, Identifiable {
     /// Starts a save without waiting for it — the call sites are UI events.
     /// Use `flush()` when the result actually has to be waited on.
     func saveNow() {
-        guard loadState == .ready, !isReadOnly, text != savedText, !hasConflict else { return }
+        guard canSave else { return }
         // Never cancel a save already in flight; let it finish and re-check.
         // Cancelling mid-request is how half-written documents happen.
-        guard !isSaving else { return }
+        guard !isSaving else {
+            saveRequestedWhileSaving = true
+            return
+        }
         saveTask = Task { [weak self] in await self?.write() }
+    }
+
+    private var canSave: Bool {
+        loadState == .ready && !isReadOnly && !isDetached && text != savedText && !hasConflict
     }
 
     /// Awaits any save in flight, then saves anything still outstanding.
     /// Quitting and switching documents both go through this.
     func flush() async {
-        await saveTask?.value
-        guard loadState == .ready, !isReadOnly, text != savedText, !hasConflict else { return }
+        await settleSaves()
+        guard canSave else { return }
         await write()
+    }
+
+    /// Waits until no save is in flight. One landing can start another for
+    /// text typed while it was out, so a single await isn't enough: a write
+    /// started alongside that follow-up would quote the same version and come
+    /// back as a conflict with itself.
+    private func settleSaves() async {
+        var awaited: Task<Void, Never>?
+        while let task = saveTask, task != awaited {
+            awaited = task
+            await task.value
+        }
+    }
+
+    // MARK: Renaming and deleting
+
+    /// Stops this model writing anywhere: its document has moved or gone. A
+    /// save already in flight still finishes (`waitForSave`), since cutting a
+    /// request off midway is worse than letting it land.
+    func detach() {
+        isDetached = true
+        retryTask?.cancel()
+        retryTask = nil
+    }
+
+    /// Undoes `detach` when the move or delete it guarded didn't happen.
+    func reattach() {
+        isDetached = false
+        saveNow()
+    }
+
+    /// Takes on edits that were never saved under the document's old name.
+    /// They become this document's unsaved text and autosave as usual.
+    func adoptUnsavedText(_ unsaved: String) {
+        guard loadState == .ready else {
+            adoptedText = unsaved
+            return
+        }
+        guard text != unsaved else { return }
+        text = unsaved
+    }
+
+    /// Swaps how the document is reached, keeping everything it holds. Used
+    /// when the GitHub credential changes underneath an open document.
+    func replaceStore(_ newStore: any DocumentStore) {
+        objectWillChange.send()   // isReadOnly follows the store
+        store = newStore
+        // A private repository read before the account was connected failed
+        // to load; it can be read now.
+        if case .failed = loadState { retryLoad() }
+        if saveStatus == .failed || saveStatus == .retrying {
+            retrySave()
+        } else {
+            saveNow()
+        }
     }
 
     /// Try a failed save again now, rather than waiting out the backoff — the
     /// Retry button, and what a returning network is worth a shot at.
     func retrySave() {
-        guard saveStatus == .retrying || saveStatus == .failed else { return }
+        guard !isDetached, saveStatus == .retrying || saveStatus == .failed else { return }
         retryDelayNanos = Self.initialRetryNanos
         retryTask?.cancel()
         saveTask = Task { [weak self] in await self?.write() }
@@ -187,7 +266,7 @@ final class DocumentModel: ObservableObject, Identifiable {
     /// simply follows the file; one with unsaved edits raises a conflict
     /// rather than picking a winner on the user's behalf.
     func reconcileWithDisk() {
-        guard loadState == .ready,
+        guard loadState == .ready, !isDetached,
               let current = store.versionImmediately(of: id), current != version else { return }
         guard text == savedText else {
             hasConflict = true
@@ -221,14 +300,15 @@ final class DocumentModel: ObservableObject, Identifiable {
 
     /// Awaits a conversion or any other save in flight.
     func waitForSave() async {
-        await saveTask?.value
+        await settleSaves()
     }
 
     // MARK: Conflict resolution
 
     /// Keep what's in the editor, overwriting whatever is stored.
     func resolveKeepingMine() {
-        Task { [weak self] in
+        // Held as the save task so a quit or a rename waits for it.
+        saveTask = Task { [weak self] in
             guard let self else { return }
             // Adopt whatever is stored now as the base, so the write is
             // accepted. A remote store can only answer that by fetching.
@@ -250,8 +330,11 @@ final class DocumentModel: ObservableObject, Identifiable {
     // MARK: Reading and writing
 
     private func write() async {
+        guard !isDetached else { return }
         // A fresh attempt supersedes any scheduled retry.
         retryTask?.cancel()
+        retryTask = nil
+        saveRequestedWhileSaving = false
         saveStatus = .saving
         let attempted = text
         do {
@@ -264,6 +347,9 @@ final class DocumentModel: ObservableObject, Identifiable {
             lastError = nil
             saveStatus = .idle
             retryDelayNanos = Self.initialRetryNanos
+            // Typing carried on through the request, and the autosave that
+            // came due meanwhile was skipped: save the rest now.
+            if saveRequestedWhileSaving { saveNow() }
         } catch DocumentStoreError.versionConflict {
             // A conflict is a decision, not a retry — the banner takes over and
             // autosave stays paused until it's resolved.
@@ -307,7 +393,12 @@ final class DocumentModel: ObservableObject, Identifiable {
             guard let self, !Task.isCancelled else { return }
             guard self.saveStatus == .retrying, self.hasUnsavedChanges, !self.hasConflict
             else { return }
-            await self.write()
+            // The write runs as a save of its own, not inside this task:
+            // `write` cancels the pending retry, which would otherwise be the
+            // task it is running in, and URLSession abandons a request whose
+            // task is cancelled, so every retry failed and scheduled another.
+            self.retryTask = nil
+            self.saveTask = Task { [weak self] in await self?.write() }
         }
     }
 

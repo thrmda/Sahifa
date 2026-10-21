@@ -31,6 +31,7 @@ struct TabBarView: View {
                     ForEach(windowState.openTabs, id: \.self) { id in
                         TabButton(
                             title: title(for: id),
+                            location: location(of: id),
                             isActive: windowState.selection == id,
                             select: { windowState.selection = id },
                             close: { windowState.closeTab(id) },
@@ -92,6 +93,13 @@ struct TabBarView: View {
     }
 }
 
+/// Where a tab's file lives, for its tooltip: two tabs both called
+/// README.md are otherwise indistinguishable. A loose file's path is absolute.
+private func location(of id: DocumentID) -> String? {
+    guard !id.isBlankTab else { return nil }
+    return id.sourceID == Source.looseFilesID ? "/" + id.path : id.path
+}
+
 private extension View {
     /// Reports this view's width as it changes. A background reader rather than
     /// wrapping the view in a GeometryReader, which would take over its layout.
@@ -111,6 +119,7 @@ private extension View {
 /// A downward drag past the bar detaches it into a window (`detach`).
 private struct TabButton: View {
     let title: Text
+    let location: String?
     let isActive: Bool
     let select: () -> Void
     let close: () -> Void
@@ -129,6 +138,10 @@ private struct TabButton: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .foregroundStyle(isActive ? Color.ink : Color.slate)
+                // Selected by a tap gesture, which VoiceOver can't see or
+                // press: say it's a button, and which one is current.
+                .accessibilityAddTraits(isActive ? [.isButton, .isSelected] : .isButton)
+                .accessibilityAction(.default, select)
             Button(action: close) {
                 Image(systemName: "xmark")
                     .font(.system(size: 8, weight: .bold))
@@ -172,5 +185,7 @@ private struct TabButton: View {
         )
         .onHover { hovering = $0 }
         .pointerCursor(.pointingHand)
+        .help(Text(verbatim: location ?? ""))
+        .accessibilityElement(children: .contain)
     }
 }

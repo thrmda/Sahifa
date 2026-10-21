@@ -65,6 +65,11 @@ struct MarkdownPreview: NSViewRepresentable {
         private var lastRendered: String?
         private var renderedID: DocumentID?
         private var debounce: Task<Void, Never>?
+        /// The shell load in flight. The one navigation the preview allows is
+        /// this load, once: the document's own HTML could otherwise navigate
+        /// the persistent web view away and receive every later document.
+        private var shellNavigation: WKNavigation?
+        private var expectingShellLoad = false
 
         init(scrollSync: ScrollSync?) {
             self.scrollSync = scrollSync
@@ -72,7 +77,8 @@ struct MarkdownPreview: NSViewRepresentable {
 
         func loadShell() {
             shellReady = false
-            webView?.loadHTMLString(MarkdownHTMLRenderer.previewShell(), baseURL: nil)
+            expectingShellLoad = true
+            shellNavigation = webView?.loadHTMLString(MarkdownHTMLRenderer.previewShell(), baseURL: nil)
         }
 
         func userContentController(_ controller: WKUserContentController,
@@ -117,6 +123,8 @@ struct MarkdownPreview: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            guard navigation === shellNavigation else { return }
+            expectingShellLoad = false
             shellReady = true
             flush()
         }
@@ -128,15 +136,23 @@ struct MarkdownPreview: NSViewRepresentable {
         func webView(_ webView: WKWebView,
                      decidePolicyFor navigationAction: WKNavigationAction,
                      decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-            guard navigationAction.navigationType != .other else {
-                decisionHandler(.allow)   // our own loadHTMLString
+            if navigationAction.navigationType == .other {
+                // Our own loadHTMLString, and nothing else: a meta refresh or
+                // a script setting location arrives as `.other` too, and so
+                // does any frame the document's HTML tries to load.
+                let isShell = expectingShellLoad && navigationAction.targetFrame?.isMainFrame == true
+                if isShell { expectingShellLoad = false }
+                decisionHandler(isShell ? .allow : .cancel)
                 return
             }
             decisionHandler(.cancel)
-            guard let url = navigationAction.request.url else { return }
+            // Only a click the user made opens anything outside the preview.
+            guard navigationAction.navigationType == .linkActivated,
+                  let url = navigationAction.request.url else { return }
             if url.isFileURL {
                 AppModel.shared.openExternal([url])
-            } else if let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
+            } else if let scheme = url.scheme?.lowercased(),
+                      scheme == "http" || scheme == "https" || scheme == "mailto" {
                 NSWorkspace.shared.open(url)
             }
         }

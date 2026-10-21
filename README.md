@@ -120,10 +120,13 @@ scripts/test-github-store.sh         # reading a GitHub repository (no login)
 scripts/test-accounts.sh             # Keychain storage, refused credentials
 scripts/test-github-write.sh         # saving back (opt-in, see the script)
 scripts/test-save-retry.sh           # failed-save handling and retry
+scripts/test-text-encoding.sh        # encodings, byte-order marks, Windows-1256
+scripts/test-tabular.sh              # CSV/TSV parsing, detection, tables
+scripts/test-html-safety.sh          # what a document's own HTML may run
 ```
 
-`test-formatting.sh` links the swift-markdown objects from a prior Debug
-build, so run a normal build once before it.
+`test-formatting.sh` and `test-html-safety.sh` link the swift-markdown
+objects from a prior Debug build, so run a normal build once before them.
 
 On first launch, click **Add Folder…** (⇧⌘O) and pick any folder of `.md`
 files — try the bundled `Samples/` folder, which contains a mixed

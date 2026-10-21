@@ -17,6 +17,8 @@ final class FlakyStore: DocumentStore, @unchecked Sendable {
     var text = "start"
     var failWrites = false
     var failPermanently = false
+    /// How long a write takes, like a request in flight.
+    var writeNanos: UInt64 = 0
     private(set) var writeAttempts = 0
 
     func readImmediately(_ id: DocumentID) -> DocumentContents? {
@@ -31,10 +33,42 @@ final class FlakyStore: DocumentStore, @unchecked Sendable {
     func write(_ text: String, to id: DocumentID, expecting: VersionToken?,
                encoding: TextEncoding) async throws -> VersionToken? {
         writeAttempts += 1
+        // Behave like URLSession: a request made from a cancelled task fails
+        // with URLError.cancelled. Ignoring cancellation is what hid a retry
+        // that cancelled itself every time.
+        if Task.isCancelled { throw URLError(.cancelled) }
+        if writeNanos > 0 {
+            do { try await Task.sleep(nanoseconds: writeNanos) } catch { throw URLError(.cancelled) }
+        }
         if failPermanently { throw RemoteStoreError.notAuthorised }
         if failWrites { throw URLError(.notConnectedToInternet) }
         self.text = text
         return VersionToken(raw: "v")
+    }
+}
+
+/// A slow store that checks versions the way a real one does, so two writes
+/// quoting the same version can't both land.
+final class VersionedStore: DocumentStore, @unchecked Sendable {
+    var isReadOnly = false
+    var text = "start"
+    private var version = 0
+    func readImmediately(_ id: DocumentID) -> DocumentContents? {
+        DocumentContents(text: text, version: VersionToken(raw: "\(version)"))
+    }
+    func read(_ id: DocumentID) async throws -> DocumentContents { readImmediately(id)! }
+    func versionImmediately(of id: DocumentID) -> VersionToken? { VersionToken(raw: "\(version)") }
+    func children(of id: DocumentID) async throws -> [Node] { [] }
+    func delete(_ id: DocumentID) async throws {}
+    func move(_ id: DocumentID, to destination: DocumentID) async throws {}
+    func write(_ text: String, to id: DocumentID, expecting: VersionToken?,
+               encoding: TextEncoding) async throws -> VersionToken? {
+        guard expecting?.raw == "\(version)" else { throw DocumentStoreError.versionConflict }
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        guard expecting?.raw == "\(version)" else { throw DocumentStoreError.versionConflict }
+        version += 1
+        self.text = text
+        return VersionToken(raw: "\(version)")
     }
 }
 
@@ -113,6 +147,61 @@ func main() async {
     check("resumeSaving recovers a failed save", store3.text == "no access", store3.text)
     check("…back to idle", await MainActor.run { doc3.saveStatus } == .idle,
           String(describing: await MainActor.run { doc3.saveStatus }))
+
+    // Typing during a slow save: the autosave that comes due mid-request is
+    // skipped, so the save that lands has to pick up what was typed after it.
+    let store4 = FlakyStore()
+    // Longer than the 1 s autosave debounce, so it comes due mid-request.
+    store4.writeNanos = 2_000_000_000
+    let doc4 = await MainActor.run { DocumentModel(id: id, store: store4) }
+    await MainActor.run {
+        doc4.text = "one"
+        doc4.saveNow()
+    }
+    try? await Task.sleep(nanoseconds: 200_000_000)
+    await MainActor.run {
+        doc4.text = "one two"
+    }
+    // The debounce fires at about 1.2 s, while the first write is still out.
+    try? await Task.sleep(nanoseconds: 4_600_000_000)
+    check("text typed during a save is saved once it lands",
+          store4.text == "one two", store4.text)
+    check("…with nothing left unsaved", await MainActor.run { !doc4.hasUnsavedChanges })
+
+    // Quitting (flush) while the follow-up save is in flight must wait for
+    // it, not start a write of its own beside it: two writes quoting the same
+    // version, and the second reported a conflict with the first.
+    let store6 = VersionedStore()
+    let doc6 = await MainActor.run { DocumentModel(id: id, store: store6) }
+    await MainActor.run {
+        doc6.text = "first"
+        doc6.saveNow()
+    }
+    try? await Task.sleep(nanoseconds: 100_000_000)
+    await MainActor.run {
+        doc6.text = "first second"
+        doc6.saveNow()   // skipped mid-save, so the landing save starts another
+    }
+    await doc6.flush()
+    check("flush waits for a follow-up save instead of racing it",
+          await MainActor.run { !doc6.hasConflict && !doc6.hasUnsavedChanges },
+          "conflict \(await MainActor.run { doc6.hasConflict }), stored \(store6.text)")
+    check("…and the last text is what's stored", store6.text == "first second", store6.text)
+
+    // A credential arriving while a save is held: swapping the store lets the
+    // held edit through without waiting for a keystroke.
+    let readOnly = FlakyStore()
+    readOnly.failPermanently = true
+    let doc5 = await MainActor.run { DocumentModel(id: id, store: readOnly) }
+    await MainActor.run {
+        doc5.text = "held"
+        doc5.saveNow()
+    }
+    try? await Task.sleep(nanoseconds: 300_000_000)
+    let connected = FlakyStore()
+    await MainActor.run { doc5.replaceStore(connected) }
+    try? await Task.sleep(nanoseconds: 300_000_000)
+    check("a replaced store saves the held edit", connected.text == "held", connected.text)
 }
 await main()
 print(failures == 0 ? "\nALL PASS" : "\n\(failures) FAILURE(S)")

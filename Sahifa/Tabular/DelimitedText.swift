@@ -47,14 +47,19 @@ struct DelimitedText: Equatable {
 
     /// The candidate that splits the opening rows most consistently into more
     /// than one column. `;` matters as much as `,`: spreadsheets in locales
-    /// that write decimals with a comma export with it. Ties go to the order
-    /// of `Delimiter.allCases`, so plain CSV wins, and so does a file with a
-    /// single column.
+    /// that write decimals with a comma export with it.
+    ///
+    /// Ties go to the delimiter least likely to turn up evenly by accident:
+    /// tab, then semicolon, then comma. A comma inside data is ordinary
+    /// ("1,5;2,25" with decimal commas, "A<tab>1,000" pasted from a
+    /// spreadsheet), and those split just as consistently on the comma; a tab
+    /// or a semicolon on every row is almost always the real delimiter. A
+    /// file with a single column falls back to commas.
     static func detectDelimiter(in text: String) -> Delimiter {
         let sample = Array(text.unicodeScalars.prefix(detectionScalars))
         let truncated = sample.count == detectionScalars
         var best: (delimiter: Delimiter, consistency: Double)?
-        for candidate in Delimiter.allCases {
+        for candidate in [Delimiter.tab, .semicolon, .comma, .pipe] {
             var rows = parse(sample, delimiter: candidate, rowLimit: detectionRows).rows
             // A sample cut off mid-row would count that row short.
             if truncated, rows.count > 1, rows.count < detectionRows { rows.removeLast() }

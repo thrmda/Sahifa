@@ -161,6 +161,52 @@ func documentBehaviour() async {
         check("same-length external edit is still detected", doc.hasConflict)
         check("…leaving their version on disk", onDisk(url) == "cccc", onDisk(url))
     }
+
+    // 8. A symlinked document: the save reaches the real file, the link stays
+    //    a link, and an edit to the target is seen as a conflict.
+    do {
+        let target = makeFile("target.md", "original")
+        let link = dir.appendingPathComponent("link.md")
+        try? FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+        let doc = makeDocument(link)
+        doc.text = "saved through the link"
+        await doc.flush()
+        let attributes = try? FileManager.default.attributesOfItem(atPath: link.path)
+        check("saving through a symlink keeps the link",
+              attributes?[.type] as? FileAttributeType == .typeSymbolicLink)
+        check("…and writes the real file", onDisk(target) == "saved through the link", onDisk(target))
+        doc.text = "mine"
+        externalWrite(target, "changed at the target, longer")
+        await doc.flush()
+        check("…an edit to the target is a conflict", doc.hasConflict)
+    }
+
+    // 9. A file locked against writing is not replaced by an atomic save.
+    do {
+        let url = makeFile("locked.md", "locked")
+        try? FileManager.default.setAttributes([.posixPermissions: 0o444], ofItemAtPath: url.path)
+        let doc = makeDocument(url)
+        doc.text = "should not land"
+        await doc.flush()
+        check("a read-only file is left alone", onDisk(url) == "locked", onDisk(url))
+        check("…and the save says it failed", doc.saveStatus == .failed && doc.hasUnsavedChanges,
+              String(describing: doc.saveStatus))
+        try? FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
+    }
+
+    // 10. Paths reported through a symlinked root (FSEvents gives real paths)
+    //     still map into the source.
+    do {
+        let real = dir.appendingPathComponent("realroot", isDirectory: true)
+        try? FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
+        let alias = dir.appendingPathComponent("aliasroot")
+        try? FileManager.default.createSymbolicLink(at: alias, withDestinationURL: real)
+        let source = Source(id: UUID(), kind: .localFolder, name: "alias", rootURL: alias)
+        let reported = real.resolvingSymlinksInPath().appendingPathComponent("sub")
+        check("a real path under a symlinked root maps into the source",
+              source.documentID(for: reported)?.path == "sub",
+              String(describing: source.documentID(for: reported)))
+    }
 }
 
 await storeContract()

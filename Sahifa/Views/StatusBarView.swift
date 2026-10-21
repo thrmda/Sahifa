@@ -116,6 +116,9 @@ struct StatusBarView: View {
         } label: {
             Image(systemName: symbol)
                 .foregroundStyle(viewMode == mode ? Color.sage : Color.slate)
+                // The half it fills is where the editor sits, which is the
+                // right in RTL chrome. The other two symbols are symmetric.
+                .flipsForRightToLeftLayoutDirection(mode == .editOnly)
         }
         .buttonStyle(.borderless)
         .help(label)

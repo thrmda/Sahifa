@@ -42,9 +42,20 @@ enum MarkdownTable {
     /// A table inside a blockquote carries `>` markers on every line; they
     /// aren't part of any cell.
     static func strippingQuoteMarkers(_ source: String) -> String {
-        source.split(separator: "\n", omittingEmptySubsequences: false)
+        // isNewline, not the Character "\n": CRLF is one Character in Swift.
+        source.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
             .map { line in String(line.drop { $0 == ">" || $0 == " " }) }
             .joined(separator: "\n")
+    }
+
+    /// Text that is already a Markdown table: a pipe row followed by a
+    /// delimiter row. Detected as pipe-delimited text instead, its outer
+    /// pipes became empty columns and the `---` row became data.
+    static func looksLikeMarkdownTable(_ text: String) -> Bool {
+        let lines = text.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        return lines.count >= 2 && lines[0].contains("|") && isDelimiterRow(lines[1])
     }
 
     // MARK: Helpers

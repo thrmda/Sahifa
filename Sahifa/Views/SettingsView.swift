@@ -16,9 +16,19 @@ private struct GitHubAccountRow: View {
             case .connected:
                 Button("Disconnect") { account.disconnect() }
             case .disconnected, .failed:
-                Button("Connect…") { showingConnect = true }
+                HStack(spacing: Space.s) {
+                    // A reconnect that failed leaves the old credential stored,
+                    // and it would come back as connected on the next launch.
+                    if account.hasStoredCredential {
+                        Button("Disconnect") { account.disconnect() }
+                    }
+                    Button("Connect…") { showingConnect = true }
+                }
             case .expired:
-                Button("Reconnect…") { showingConnect = true }
+                HStack(spacing: Space.s) {
+                    Button("Disconnect") { account.disconnect() }
+                    Button("Reconnect…") { showingConnect = true }
+                }
             }
         } label: {
             Text(verbatim: "GitHub")
@@ -90,6 +100,7 @@ private struct GitHubConnectSheet: View {
             SecureField("Paste the token here", text: $token)
                 .textFieldStyle(.roundedBorder)
                 .disabled(isChecking)
+                .onSubmit(connect)
             if case .failed(let reason) = account.state {
                 Text(verbatim: reason)
                     .foregroundStyle(Color.warning)
@@ -110,21 +121,30 @@ private struct GitHubConnectSheet: View {
                         .foregroundStyle(Color.slate)
                 }
                 Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
                     .disabled(isChecking)
-                Button("Connect") {
-                    Task {
-                        await account.connect(token: token)
-                        if case .connected = account.state { dismiss() }
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.sage)
-                .disabled(isChecking
-                          || token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Button("Connect", action: connect)
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+                    .tint(.sage)
+                    .disabled(!canConnect)
             }
         }
         .padding(Space.xl)
         .frame(width: 460)
+    }
+
+    private var canConnect: Bool {
+        !isChecking && !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Return in the field and the Connect button both land here.
+    private func connect() {
+        guard canConnect else { return }
+        Task {
+            await account.connect(token: token)
+            if case .connected = account.state { dismiss() }
+        }
     }
 }
 

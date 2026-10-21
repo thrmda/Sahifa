@@ -99,13 +99,20 @@ private final class PDFCapture: NSObject, WKNavigationDelegate {
 
     private let webView: WKWebView
     private let destination: URL
-    private let completion: @MainActor (PDFCapture, Error?) -> Void
+    private let report: @MainActor (PDFCapture, Error?) -> Void
+    /// The page load, the only navigation allowed. The document's HTML could
+    /// otherwise navigate the page mid-export and finish the capture twice,
+    /// or capture something that isn't the document.
+    private var pageNavigation: WKNavigation?
+    private var expectingPageLoad = false
+    private var started = false
+    private var finished = false
 
     init(destination: URL, completion: @escaping @MainActor (PDFCapture, Error?) -> Void) {
         self.webView = WKWebView(frame: NSRect(x: 0, y: 0,
                                                width: Self.pageWidth, height: Self.pageHeight))
         self.destination = destination
-        self.completion = completion
+        self.report = completion
         super.init()
         // createPDF captures the *screen* rendering, so `@media print` never
         // fires — force light appearance so the page renders on light "paper"
@@ -116,10 +123,42 @@ private final class PDFCapture: NSObject, WKNavigationDelegate {
     }
 
     func start(html: String) {
-        webView.loadHTMLString(html, baseURL: nil)
+        expectingPageLoad = true
+        pageNavigation = webView.loadHTMLString(html, baseURL: nil)
+    }
+
+    /// Reports once, whatever fires: a capture can fail in several places,
+    /// and the export (or the `-exportPDF` run waiting to quit) needs exactly
+    /// one answer.
+    private func completion(_ capture: PDFCapture, _ error: Error?) {
+        guard !finished else { return }
+        finished = true
+        report(capture, error)
+    }
+
+    func webView(_ webView: WKWebView,
+                 decidePolicyFor navigationAction: WKNavigationAction,
+                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        let isPage = expectingPageLoad && navigationAction.navigationType == .other
+            && navigationAction.targetFrame?.isMainFrame == true
+        if isPage { expectingPageLoad = false }
+        decisionHandler(isPage ? .allow : .cancel)
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!,
+                 withError error: Error) {
+        guard navigation === pageNavigation else { return }
+        completion(self, error)
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        completion(self, NSError(domain: "Sahifa.Export", code: 4, userInfo: [
+            NSLocalizedDescriptionKey: String(localized: "The page stopped rendering before the PDF was finished.")]))
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard navigation === pageNavigation, !started else { return }
+        started = true
         // createPDF renders SCREEN media, so the stylesheet's @media print
         // block never applies here — its rules have to be injected by hand.
         //
@@ -151,6 +190,7 @@ private final class PDFCapture: NSObject, WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        guard navigation === pageNavigation else { return }
         completion(self, error)
     }
 
@@ -176,7 +216,7 @@ private final class PDFCapture: NSObject, WKNavigationDelegate {
                   let blocks = obj["blocks"] as? [[Double]] else {
                 completion(self, error ?? NSError(
                     domain: "Sahifa.Export", code: 2,
-                    userInfo: [NSLocalizedDescriptionKey: "Could not measure the document for pagination."]))
+                    userInfo: [NSLocalizedDescriptionKey: String(localized: "Could not measure the document for pagination.")]))
                 return
             }
             let starts = pageStarts(contentHeight: CGFloat(height),
@@ -226,7 +266,7 @@ private final class PDFCapture: NSObject, WKNavigationDelegate {
     private func finish(_ doc: PDFDocument) {
         guard let data = doc.dataRepresentation() else {
             completion(self, NSError(domain: "Sahifa.Export", code: 3,
-                userInfo: [NSLocalizedDescriptionKey: "Could not serialize the PDF."]))
+                userInfo: [NSLocalizedDescriptionKey: String(localized: "Could not serialize the PDF.")]))
             return
         }
         do {
