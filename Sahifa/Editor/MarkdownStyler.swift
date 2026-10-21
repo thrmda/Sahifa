@@ -65,42 +65,146 @@ final class MarkdownStyler {
     /// of font-fixed Arabic runs.)
     var focusParagraph: NSRange?
 
-    private var cachedText: String?
+    private var cachedText: NSString?
     private var cachedTheme: EditorTheme?
-    private var cachedBase: NSAttributedString?
+    /// The styled document for `cachedText`, before focus dimming. Patched
+    /// in place by `restyleEdited` rather than rebuilt.
+    private var cachedBase: NSMutableAttributedString?
+    /// Top-level Markdown blocks of `cachedText`, to tell which ones an edit
+    /// actually changed.
+    private var cachedBlocks: [Block] = []
+    /// The focus paragraph whose dimming the storage currently carries.
+    private var appliedFocus: NSRange?
 
+    /// Where the observed storage's text has changed since the last restyle,
+    /// in its current text, and by how much its length changed. Taken from
+    /// the storage itself: comparing old and new text can't say which of
+    /// two identical neighbours was typed, and guessing wrong left a newly
+    /// typed newline unstyled.
+    private var pendingEdit: NSRange?
+    private var pendingDelta = 0
+    private var editObserver: NSObjectProtocol?
+
+    deinit {
+        if let editObserver { NotificationCenter.default.removeObserver(editObserver) }
+    }
+
+    /// Starts recording `storage`'s text edits for `restyleEdited`.
+    func observeEdits(of storage: NSTextStorage) {
+        if let editObserver { NotificationCenter.default.removeObserver(editObserver) }
+        editObserver = NotificationCenter.default.addObserver(
+            forName: NSTextStorage.didProcessEditingNotification, object: storage, queue: nil
+        ) { [weak self, weak storage] _ in
+            guard let self, let storage, storage.editedMask.contains(.editedCharacters) else { return }
+            self.recordEdit(storage.editedRange, changeInLength: storage.changeInLength)
+        }
+    }
+
+    private func recordEdit(_ edited: NSRange, changeInLength delta: Int) {
+        if let pending = pendingEdit {
+            // Carry the earlier edit into the text as it is now.
+            let replaced = NSRange(location: edited.location, length: edited.length - delta)
+            pendingEdit = NSUnionRange(Self.map(pending, through: (replaced, edited.length)), edited)
+        } else {
+            pendingEdit = edited
+        }
+        pendingDelta += delta
+    }
+
+    /// A top-level block: where it is and what kind it is. Same range, same
+    /// kind and same text means it styles the same.
+    private struct Block: Equatable {
+        var range: NSRange
+        var kind: ObjectIdentifier
+    }
+
+    /// Rebuilds the whole document's styling and applies whatever differs.
+    /// For a new document, a new theme, or text replaced from outside.
     func restyle(_ storage: NSTextStorage) {
-        let text = storage.string
-        let base: NSAttributedString
+        let text = storage.string as NSString
         // Literal comparison: Swift's == calls canonically equivalent strings
         // equal, and reusing a result styled for the other form (a different
         // UTF-16 length) wrote that older text back over the edit.
-        if let cachedText, (text as NSString).isEqual(to: cachedText),
-           theme == cachedTheme, let cachedBase {
-            base = cachedBase
-        } else {
-            let styled = styledAttributedString(for: text)
-            base = styled.copy() as! NSAttributedString
-            cachedText = text
+        let cached = cachedText.map { text.isEqual(to: $0) } == true && theme == cachedTheme && cachedBase != nil
+        if !cached {
+            let (styled, blocks) = buildStyled(for: text as String)
+            cachedText = text.copy() as? NSString
             cachedTheme = theme
-            cachedBase = base
+            cachedBase = styled
+            cachedBlocks = blocks
         }
-        applyDiff(dimmedOutsideFocus(base), to: storage)
+        pendingEdit = nil
+        pendingDelta = 0
+        applyDiff(in: [NSRange(location: 0, length: storage.length)], to: storage)
     }
 
-    private func dimmedOutsideFocus(_ base: NSAttributedString) -> NSAttributedString {
-        let full = NSRange(location: 0, length: base.length)
-        guard let focusParagraph, full.length > 0 else { return base }
-        let focus = NSIntersectionRange(focusParagraph, full)
+    /// Restyles after the storage's own text was edited, touching only the
+    /// blocks the edit changed. Everything outside the edit must still carry
+    /// the styling the last restyle gave it, which holds for typing, undo and
+    /// the formatting commands but not for text set from outside: use
+    /// `restyle` for that. Needs `observeEdits(of:)` on the same storage.
+    ///
+    /// On a 90 KB document this is the difference between about 200 ms and a
+    /// few milliseconds per keystroke: rebuilding styles everything, and
+    /// diffing everything compares every run.
+    func restyleEdited(_ storage: NSTextStorage) {
+        guard let cachedText, let cachedBase, theme == cachedTheme,
+              cachedBase.length == cachedText.length
+        else { return restyle(storage) }
 
-        let dimmed = NSMutableAttributedString(attributedString: base)
-        let dim = Brand.ink.withAlphaComponent(0.3)
-        let head = NSRange(location: 0, length: focus.location)
-        let tailStart = NSMaxRange(focus)
-        let tail = NSRange(location: tailStart, length: full.length - tailStart)
-        if head.length > 0 { dimmed.addAttribute(.foregroundColor, value: dim, range: head) }
-        if tail.length > 0 { dimmed.addAttribute(.foregroundColor, value: dim, range: tail) }
-        return dimmed
+        let text = storage.string as NSString
+        var regions: [NSRange] = []
+        var oldFocus = appliedFocus
+
+        if let pending = pendingEdit {
+            let edit = (range: NSRange(location: pending.location, length: pending.length - pendingDelta),
+                        newLength: pending.length)
+            pendingEdit = nil
+            pendingDelta = 0
+            guard edit.range.length >= 0, NSMaxRange(edit.range) <= cachedText.length,
+                  let dirty = patchBase(cachedBase, from: cachedText, to: text, edit: edit)
+            else { return restyle(storage) }
+            regions.append(dirty)
+            oldFocus = oldFocus.map { Self.map($0, through: edit) }
+        } else if !text.isEqual(to: cachedText) {
+            // Changed without our seeing it.
+            return restyle(storage)
+        }
+
+        if (oldFocus == nil) != (focusParagraph == nil) {
+            // Focus mode switched on or off: everything dims or undims.
+            regions = [NSRange(location: 0, length: text.length)]
+        } else if oldFocus != focusParagraph {
+            regions += [oldFocus, focusParagraph].compactMap { $0 }
+        }
+        applyDiff(in: regions, to: storage)
+    }
+
+    /// How many times the whole document has been styled from scratch. For
+    /// tests: typing should leave it alone.
+    private(set) var fullRebuilds = 0
+
+    /// Builds the styled document and its top-level blocks from scratch.
+    private func buildStyled(for text: String) -> (NSMutableAttributedString, [Block]) {
+        fullRebuilds += 1
+        let ns = text as NSString
+        let styled = NSMutableAttributedString(string: text, attributes: baseAttributes())
+        applyParagraphDirections(styled, ns: ns, in: NSRange(location: 0, length: ns.length),
+                                 carried: .leftToRight)
+        var blocks: [Block] = []
+        if parsesMarkdown {
+            let parsed = Self.topLevelBlocks(of: Document(parsing: text), map: SourceMap(text: text),
+                                             length: ns.length)
+            for case let (block, (markup, map)?) in parsed {
+                style(markup, in: block, storage: styled, ns: ns, map: map)
+            }
+            blocks = parsed.map(\.block)
+        }
+        // Match NSTextStorage's automatic font fixing (e.g. Arabic runs get
+        // the cascade's Arabic face) so those runs don't diff as changed on
+        // every restyle.
+        styled.fixAttributes(in: NSRange(location: 0, length: ns.length))
+        return (styled, blocks)
     }
 
     /// Builds the fully styled document off-screen. Kept separate from
@@ -109,47 +213,269 @@ final class MarkdownStyler {
     /// to the edit, instead of re-laying-out (and visibly flashing) the
     /// whole document on every keystroke.
     func styledAttributedString(for text: String) -> NSMutableAttributedString {
-        let ns = text as NSString
-        let styled = NSMutableAttributedString(string: text, attributes: baseAttributes())
-        applyParagraphDirections(styled, ns: ns)
-
-        if parsesMarkdown {
-            let document = Document(parsing: text)
-            var walker = StyleWalker(storage: styled, ns: ns, map: SourceMap(text: text), theme: theme)
-            walker.visit(document)
-        }
-        // Match NSTextStorage's automatic font fixing (e.g. Arabic runs get
-        // the cascade's Arabic face) so those runs don't diff as changed on
-        // every restyle.
-        styled.fixAttributes(in: NSRange(location: 0, length: ns.length))
-        return styled
+        buildStyled(for: text).0
     }
 
-    /// Applies `target`'s attributes to `storage`, touching only the runs
-    /// whose attributes actually differ.
-    private func applyDiff(_ target: NSAttributedString, to storage: NSTextStorage) {
+    // MARK: Restyling only what an edit changed
+
+    /// Carries a range in the old text across an edit into the new text.
+    private static func map(_ range: NSRange, through edit: (range: NSRange, newLength: Int)) -> NSRange {
+        let delta = edit.newLength - edit.range.length
+        if NSMaxRange(range) <= edit.range.location { return range }
+        if range.location >= NSMaxRange(edit.range) {
+            return NSRange(location: range.location + delta, length: range.length)
+        }
+        let start = min(range.location, edit.range.location)
+        let end = max(NSMaxRange(range) + delta, edit.range.location + edit.newLength)
+        return NSRange(location: start, length: max(0, end - start))
+    }
+
+    /// Applies the edit to `base` and restyles the part of it that changed.
+    /// Returns that part, in the new text, or nil when the edit could reach
+    /// beyond the blocks it touched and only a full rebuild is safe.
+    private func patchBase(_ base: NSMutableAttributedString, from old: NSString, to new: NSString,
+                           edit: (range: NSRange, newLength: Int)) -> NSRange? {
+        let delta = edit.newLength - edit.range.length
+
+        // Blocks kept from the last parse have no markup to walk, so the
+        // parse window widens until every block to restyle is inside it.
+        var reach = 1
+        var blocks: [ParsedBlock]
+        var dirty: NSRange
+        while true {
+            var complete = true
+            if parsesMarkdown {
+                (blocks, complete) = parsedBlocks(of: new, edit: edit, reach: reach)
+            } else {
+                blocks = []
+            }
+            let range = changedRange(in: new, blocks: blocks.map { $0.block }, edit: edit)
+            dirty = range
+            let unparsed = blocks.contains { block in
+                block.parsed == nil && NSIntersectionRange(block.block.range, range).length > 0
+            }
+            guard unparsed else { break }
+            if complete { return nil }
+            reach *= 4
+        }
+
+        // A link reference definition is read by every link that names it,
+        // wherever that is.
+        if parsesMarkdown {
+            let oldDirty = NSRange(location: dirty.location, length: dirty.length - delta)
+            if new.substring(with: dirty).contains("]:") || old.substring(with: oldDirty).contains("]:") {
+                return nil
+            }
+        }
+
+        base.replaceCharacters(in: edit.range, with: new.substring(with: NSRange(location: edit.range.location,
+                                                                                  length: edit.newLength)))
+        // The recorded edit has to account for the whole change.
+        guard (base.string as NSString).isEqual(to: new) else { return nil }
+        base.setAttributes(baseAttributes(), range: dirty)
+        applyParagraphDirections(base, ns: new, in: dirty, carried: carriedDirection(before: dirty.location, in: new))
+        for case let (block, (markup, map)?) in blocks where NSIntersectionRange(block.range, dirty).length > 0 {
+            style(markup, in: block, storage: base, ns: new, map: map)
+        }
+        base.fixAttributes(in: dirty)
+
+        cachedText = new.copy() as? NSString
+        cachedBlocks = blocks.map(\.block)
+        return dirty
+    }
+
+    /// The part of the new text to restyle: everything between the blocks
+    /// before and after the edit that came through unchanged, which style
+    /// exactly as they did.
+    private func changedRange(in new: NSString, blocks: [Block],
+                              edit: (range: NSRange, newLength: Int)) -> NSRange {
+        let editEnd = edit.range.location + edit.newLength
+        let delta = edit.newLength - edit.range.length
+        let oldBlocks = cachedBlocks
+        var first = 0
+        while first < min(oldBlocks.count, blocks.count), oldBlocks[first] == blocks[first],
+              NSMaxRange(blocks[first].range) <= edit.range.location {
+            first += 1
+        }
+        var lastOld = oldBlocks.count - 1, lastNew = blocks.count - 1
+        while lastOld >= first, lastNew >= first {
+            var shifted = oldBlocks[lastOld]
+            shifted.range.location += delta
+            guard shifted == blocks[lastNew], shifted.range.location >= editEnd,
+                  oldBlocks[lastOld].range.location >= NSMaxRange(edit.range) else { break }
+            lastOld -= 1
+            lastNew -= 1
+        }
+        // One unchanged block either side is restyled too. cmark's source
+        // positions can be off by a character around CR line endings, so a
+        // block can keep its range and kind and still parse differently
+        // when its neighbour changes.
+        let start = first > 1 ? NSMaxRange(blocks[first - 2].range) : 0
+        let end = lastNew + 2 < blocks.count ? blocks[lastNew + 2].range.location : new.length
+        var dirty = NSRange(location: min(start, edit.range.location),
+                            length: max(end, editEnd) - min(start, edit.range.location))
+
+        // Grow to whole paragraphs (each carries one direction), on through
+        // the direction-neutral paragraphs after it that inherit that
+        // direction, and to whole blocks.
+        while true {
+            var grown = new.paragraphRange(for: dirty)
+            while NSMaxRange(grown) < new.length {
+                let next = new.paragraphRange(for: NSRange(location: NSMaxRange(grown), length: 0))
+                guard BidiDirection.firstStrong(in: new.substring(with: next)) == .neutral else { break }
+                grown = NSUnionRange(grown, next)
+            }
+            for block in blocks where NSIntersectionRange(block.range, grown).length > 0
+                || (block.range.length == 0 && NSLocationInRange(block.range.location, grown)) {
+                grown = NSUnionRange(grown, block.range)
+            }
+            if grown == dirty { break }
+            dirty = grown
+        }
+        return dirty
+    }
+
+    /// Styles one top-level block, and nothing outside it: cmark gives a
+    /// fence left open inside a quote or list item a range that runs on
+    /// over the next line, which styled the paragraph after it as code.
+    private func style(_ markup: Markup, in block: Block, storage: NSMutableAttributedString,
+                       ns: NSString, map: SourceMap) {
+        var walker = StyleWalker(storage: storage, ns: ns, map: map, theme: theme, limit: block.range)
+        walker.visit(markup)
+    }
+
+    private typealias ParsedBlock = (block: Block, parsed: (markup: Markup, map: SourceMap)?)
+
+    /// Each block ends where the next begins. cmark can give a block a range
+    /// that runs into the next one (a setext heading over CRLF lines does),
+    /// and the overlap styled the next block as part of it.
+    private static func topLevelBlocks(of document: Document, map: SourceMap,
+                                       length: Int) -> [ParsedBlock] {
+        var blocks: [ParsedBlock] = document.children.compactMap { child in
+            guard let source = child.range, let range = map.nsRange(source), NSMaxRange(range) <= length
+            else { return nil }
+            return (Block(range: range, kind: ObjectIdentifier(type(of: child))), (child, map))
+        }
+        for i in blocks.indices.dropLast() {
+            let next = blocks[i + 1].block.range.location
+            let range = blocks[i].block.range
+            if NSMaxRange(range) > next {
+                blocks[i].block.range.length = max(0, next - range.location)
+            }
+        }
+        return blocks
+    }
+
+    /// The new text's top-level blocks. Parsing the whole document costs
+    /// about 20 ms at 90 KB, so only a window around the edit is parsed,
+    /// from the block before it to where the blocks after it line up with
+    /// the last parse again; the rest are carried over from that parse,
+    /// without markup.
+    private func parsedBlocks(of new: NSString, edit: (range: NSRange, newLength: Int),
+                              reach: Int) -> (blocks: [ParsedBlock], complete: Bool) {
+        let old = cachedBlocks
+        let delta = edit.newLength - edit.range.length
+        func parse(_ window: NSRange) -> [ParsedBlock] {
+            let map = SourceMap(text: new.substring(with: window), offset: window.location)
+            return Self.topLevelBlocks(of: Document(parsing: new.substring(with: window)), map: map,
+                                       length: new.length)
+        }
+        func shifted(_ block: Block) -> Block {
+            Block(range: NSRange(location: block.range.location + delta, length: block.range.length),
+                  kind: block.kind)
+        }
+
+        // A link reference definition counts wherever it is, so a window
+        // that left it out would parse its links differently.
+        guard new.range(of: "]:").location == NSNotFound else {
+            return (parse(NSRange(location: 0, length: new.length)), true)
+        }
+
+        // The block just before the edit can run on into it (a paragraph
+        // that turns into a list item joins the list above), so the window
+        // starts `reach` blocks before that one, and ends at least `reach`
+        // after the edit. Windows start at line starts, where cmark does.
+        let before = old.lastIndex { NSMaxRange($0.range) <= edit.range.location }
+        let kept = before.map { max(0, $0 - reach) } ?? 0
+        let windowStart = before == nil ? 0
+            : new.lineRange(for: NSRange(location: old[kept].range.location, length: 0)).location
+        let after = old.firstIndex { $0.range.location >= NSMaxRange(edit.range) } ?? old.count
+
+        var span = reach + 1
+        while true {
+            let end = min(after + span, old.count)
+            let windowEnd = end < old.count
+                ? new.lineRange(for: NSRange(location: old[end].range.location + delta, length: 0)).location
+                : new.length
+            let window = parse(NSRange(location: windowStart, length: windowEnd - windowStart))
+            // Back in step: the window's last block is the one the last parse
+            // had there, so everything from there on parses as it did.
+            if end == old.count || (end > after && window.last?.block == shifted(old[end - 1])) {
+                let blocks: [ParsedBlock] = old[..<kept].map { ($0, nil) }
+                    + window
+                    + old[end...].map { (shifted($0), nil) }
+                return (blocks, windowStart == 0 && end == old.count)
+            }
+            span *= 2
+        }
+    }
+
+    /// The direction a neutral paragraph starting at `location` inherits:
+    /// that of the nearest paragraph before it with a strong character.
+    private func carriedDirection(before location: Int, in ns: NSString) -> BidiDirection {
+        var end = location
+        while end > 0 {
+            let paragraph = ns.paragraphRange(for: NSRange(location: end - 1, length: 0))
+            let direction = BidiDirection.firstStrong(in: ns.substring(with: paragraph))
+            if direction != .neutral { return direction }
+            end = paragraph.location
+        }
+        return .leftToRight
+    }
+
+    /// Applies the base attributes, dimmed outside the focus paragraph, to
+    /// `storage` within `regions`, touching only the runs that differ.
+    private func applyDiff(in regions: [NSRange], to storage: NSTextStorage) {
+        guard let base = cachedBase else { return }
         let length = storage.length
-        guard target.length == length else {
+        guard base.length == length else {
             // Text changed under us; restyle is only called with matching text.
-            storage.setAttributedString(target)
+            storage.setAttributedString(base)
+            appliedFocus = nil
             return
         }
-        guard length > 0 else { return }
 
+        let dim = Brand.ink.withAlphaComponent(0.3)
         var edits: [(NSRange, [NSAttributedString.Key: Any])] = []
-        var location = 0
-        while location < length {
-            let remainder = NSRange(location: location, length: length - location)
-            var targetRun = NSRange()
-            let targetAttrs = target.attributes(at: location, longestEffectiveRange: &targetRun, in: remainder)
-            var storageRun = NSRange()
-            let storageAttrs = storage.attributes(at: location, longestEffectiveRange: &storageRun, in: remainder)
-            let runEnd = min(NSMaxRange(targetRun), NSMaxRange(storageRun))
-            if !(targetAttrs as NSDictionary).isEqual(to: storageAttrs) {
-                edits.append((NSRange(location: location, length: runEnd - location), targetAttrs))
+        for region in Self.merged(regions, within: length) {
+            let target = NSMutableAttributedString(attributedString: base.attributedSubstring(from: region))
+            if let focusParagraph {
+                let focus = NSIntersectionRange(focusParagraph, NSRange(location: 0, length: length))
+                let head = NSIntersectionRange(region, NSRange(location: 0, length: focus.location))
+                let tail = NSIntersectionRange(region, NSRange(location: NSMaxRange(focus),
+                                                               length: length - NSMaxRange(focus)))
+                for part in [head, tail] where part.length > 0 {
+                    target.addAttribute(.foregroundColor, value: dim,
+                                        range: NSRange(location: part.location - region.location, length: part.length))
+                }
             }
-            location = runEnd
+            var offset = 0
+            while offset < region.length {
+                let remainder = NSRange(location: offset, length: region.length - offset)
+                var targetRun = NSRange()
+                let targetAttrs = target.attributes(at: offset, longestEffectiveRange: &targetRun, in: remainder)
+                var storageRun = NSRange()
+                let storageAttrs = storage.attributes(at: region.location + offset, longestEffectiveRange: &storageRun,
+                                                      in: NSRange(location: region.location + offset,
+                                                                  length: region.length - offset))
+                let runEnd = min(NSMaxRange(targetRun), NSMaxRange(storageRun) - region.location)
+                if !(targetAttrs as NSDictionary).isEqual(to: storageAttrs) {
+                    edits.append((NSRange(location: region.location + offset, length: runEnd - offset), targetAttrs))
+                }
+                offset = runEnd
+            }
         }
+        appliedFocus = focusParagraph
 
         guard !edits.isEmpty else { return }
         storage.beginEditing()
@@ -157,6 +483,22 @@ final class MarkdownStyler {
             storage.setAttributes(attrs, range: range)
         }
         storage.endEditing()
+    }
+
+    /// Sorted, clamped, with overlapping and touching ranges joined.
+    private static func merged(_ ranges: [NSRange], within length: Int) -> [NSRange] {
+        let clamped = ranges.map { NSIntersectionRange($0, NSRange(location: 0, length: length)) }
+            .filter { $0.length > 0 }
+            .sorted { $0.location < $1.location }
+        var result: [NSRange] = []
+        for range in clamped {
+            if let last = result.last, range.location <= NSMaxRange(last) {
+                result[result.count - 1] = NSUnionRange(last, range)
+            } else {
+                result.append(range)
+            }
+        }
+        return result
     }
 
     func baseAttributes() -> [NSAttributedString.Key: Any] {
@@ -172,10 +514,11 @@ final class MarkdownStyler {
     /// and applies an explicit NSParagraphStyle. Direction-neutral paragraphs
     /// (blank lines, punctuation-only) inherit the previous paragraph's
     /// direction so the affordance doesn't flicker while typing.
-    private func applyParagraphDirections(_ storage: NSMutableAttributedString, ns: NSString) {
-        var location = 0
-        var carried: BidiDirection = .leftToRight
-        while location < ns.length {
+    private func applyParagraphDirections(_ storage: NSMutableAttributedString, ns: NSString,
+                                          in range: NSRange, carried initial: BidiDirection) {
+        var location = range.location
+        var carried = initial
+        while location < NSMaxRange(range) {
             let paragraphRange = ns.paragraphRange(for: NSRange(location: location, length: 0))
             guard paragraphRange.length > 0 else { break }
             let paragraph = ns.substring(with: paragraphRange)
@@ -216,13 +559,15 @@ struct SourceMap {
     /// on the Character "\n" missed CRLF entirely (Swift treats "\r\n" as
     /// one Character, not equal to "\n"), so a Windows file was one long
     /// line and nothing after its first line was styled.
-    init(text: String) {
+    /// `offset` is where `text` starts in the document, for a parse of
+    /// part of it.
+    init(text: String, offset: Int = 0) {
         var lines: [Substring] = []
         var starts: [Int] = []
         let units = text.utf16
         var lineStart = units.startIndex
-        var lineStartOffset = 0
-        var offset = 0
+        var lineStartOffset = offset
+        var offset = offset
         var index = units.startIndex
         while index < units.endIndex {
             let unit = units[index]
@@ -278,11 +623,15 @@ private struct StyleWalker: MarkupWalker {
     let ns: NSString
     let map: SourceMap
     let theme: EditorTheme
+    /// The top-level block being styled; nothing outside it is touched.
+    let limit: NSRange
 
     private func range(of markup: Markup) -> NSRange? {
         guard let sourceRange = markup.range, let r = map.nsRange(sourceRange),
               NSMaxRange(r) <= ns.length else { return nil }
-        return r
+        let start = max(r.location, limit.location), end = min(NSMaxRange(r), NSMaxRange(limit))
+        guard end >= start else { return nil }
+        return NSRange(location: start, length: end - start)
     }
 
     // MARK: Block elements

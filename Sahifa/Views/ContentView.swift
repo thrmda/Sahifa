@@ -385,8 +385,8 @@ private struct DocumentPlaceholder: View {
     }
 }
 
-/// A save that couldn't reach the server. The edits are held, not lost — this
-/// says so, shows whether it's retrying on its own or waiting, and offers an
+/// A save that failed. The edits are held, not lost — this says so, shows
+/// whether it's retrying on its own or why it stopped, and offers an
 /// immediate retry. Distinct from the conflict banner, which needs a choice;
 /// this one just needs the network back.
 private struct SaveFailedBanner: View {
@@ -399,6 +399,10 @@ private struct SaveFailedBanner: View {
                 .accessibilityHidden(true)
             if document.saveStatus == .retrying {
                 Text("Couldn't save - your changes are kept and Sahifa is retrying.")
+            } else if let reason = document.lastError {
+                // A failure that isn't retried has a reason worth reading: a
+                // read-only file was told to check its connection.
+                Text("Couldn't save - your changes are kept. \(reason)")
             } else {
                 Text("Couldn't save - your changes are kept. Check your connection or sign-in.")
             }

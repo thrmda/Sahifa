@@ -105,6 +105,10 @@ struct SahifaApp: App {
         .handlesExternalEvents(matching: [])
         .commands {
             SahifaCommands(model: model)
+            // Edit ▸ Find and the rest of the standard text menus. Without
+            // them ⌘F had no menu item to send it, so the editor's find bar
+            // never opened.
+            TextEditingCommands()
         }
 
         Settings {
@@ -280,7 +284,6 @@ struct SahifaCommands: Commands {
                 Button("Quote") { send(#selector(BidiTextView.sahifaToggleQuote(_:))) }
                 Divider()
                 Button("Inline Code") { send(#selector(BidiTextView.sahifaToggleInlineCode(_:))) }
-                    .keyboardShortcut("e", modifiers: .command)
                 Button("Code Block") { send(#selector(BidiTextView.sahifaInsertCodeBlock(_:))) }
                 Divider()
                 Button("Link") { send(#selector(BidiTextView.sahifaInsertLink(_:))) }

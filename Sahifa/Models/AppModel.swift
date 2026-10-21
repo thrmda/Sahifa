@@ -283,6 +283,7 @@ final class AppModel: ObservableObject {
         childrenByDirectory = childrenByDirectory.filter { $0.key.sourceID != id }
         if source.kind == .looseFiles {
             looseFiles = []
+            unavailableLooseBookmarks = []
             persistLooseFiles()
         }
         persistSources()
@@ -423,7 +424,28 @@ final class AppModel: ObservableObject {
     }
 
     private func refreshLooseFiles() {
+        let gone = looseFiles.filter { !FileManager.default.fileExists(atPath: $0.path) }
+        for url in gone {
+            let bookmark = looseBookmarks.removeValue(forKey: url.standardizedFileURL)
+            if let bookmark, Self.isOnUnmountedVolume(url) {
+                unavailableLooseBookmarks.append(bookmark)
+            }
+        }
         looseFiles.removeAll { !FileManager.default.fileExists(atPath: $0.path) }
+        // Files whose drive has come back are listed again.
+        unavailableLooseBookmarks.removeAll { bookmark in
+            if let path = URL.resourceValues(forKeys: [.pathKey], fromBookmarkData: bookmark)?.path,
+               Self.isOnUnmountedVolume(URL(fileURLWithPath: path)) {
+                return false
+            }
+            if let url = resolveBookmark(bookmark), FileManager.default.fileExists(atPath: url.path),
+               !looseFiles.contains(where: { $0.standardizedFileURL == url.standardizedFileURL }) {
+                looseFiles.append(url)
+                looseBookmarks[url.standardizedFileURL] = bookmark
+            }
+            return true
+        }
+        if !looseFiles.isEmpty { ensureLooseFilesSource() }
         let root = DocumentID(sourceID: Source.looseFilesID, path: "")
         if childrenByDirectory[root] != nil || !looseFiles.isEmpty {
             childrenByDirectory[root] = looseFileNodes()
@@ -802,6 +824,12 @@ final class AppModel: ObservableObject {
     /// Saved sources whose bookmark didn't resolve at launch — a volume not
     /// mounted yet, say. Written back untouched so they return with it.
     private var unresolvedSourceRecords: [SourceRecord] = []
+    /// The last bookmark each opened file was saved with, for the same reason.
+    private var looseBookmarks: [URL: Data] = [:]
+    /// Opened files on a volume that isn't mounted. Kept out of the list but
+    /// saved, so they come back with the drive instead of being forgotten
+    /// the first time the app is brought forward without it.
+    private var unavailableLooseBookmarks: [Data] = []
 
     private struct SourceRecord: Codable {
         let id: UUID
@@ -835,11 +863,35 @@ final class AppModel: ObservableObject {
     }
 
     private func persistLooseFiles() {
-        let bookmarks: [Data] = looseFiles.compactMap {
-            try? $0.bookmarkData(options: .withSecurityScope,
-                                 includingResourceValuesForKeys: nil, relativeTo: nil)
+        let bookmarks: [Data] = looseFiles.compactMap { url in
+            let fresh = try? url.bookmarkData(options: .withSecurityScope,
+                                              includingResourceValuesForKeys: nil, relativeTo: nil)
+            guard let bookmark = fresh ?? looseBookmarks[url.standardizedFileURL] else { return nil }
+            looseBookmarks[url.standardizedFileURL] = bookmark
+            return bookmark
         }
-        UserDefaults.standard.set(bookmarks, forKey: Self.looseFilesKey)
+        UserDefaults.standard.set(bookmarks + unavailableLooseBookmarks, forKey: Self.looseFilesKey)
+    }
+
+    /// Where removable and network volumes are mounted. Tests point it at a
+    /// folder of their own.
+    static var volumesDirectory = "/Volumes"
+
+    /// True for a file on a volume that isn't mounted right now. Such a file
+    /// is away, not gone.
+    static func isOnUnmountedVolume(_ url: URL) -> Bool {
+        // resolvingSymlinksInPath drops a leading /private only from a path
+        // that exists, and a file on an unmounted volume doesn't.
+        func components(_ url: URL) -> [String] {
+            var parts = url.resolvingSymlinksInPath().pathComponents
+            if parts.count > 1, parts[1] == "private" { parts.remove(at: 1) }
+            return parts
+        }
+        let volumes = components(URL(fileURLWithPath: volumesDirectory))
+        let parts = components(url)
+        guard parts.count > volumes.count, Array(parts.prefix(volumes.count)) == volumes else { return false }
+        let volume = NSString.path(withComponents: Array(parts.prefix(volumes.count + 1)))
+        return !FileManager.default.fileExists(atPath: volume)
     }
 
     private func restoreSources() {
@@ -868,16 +920,22 @@ final class AppModel: ObservableObject {
             migrateLegacyWorkspace()
         }
 
-        let looseBookmarks = UserDefaults.standard.array(forKey: Self.looseFilesKey) as? [Data] ?? []
-        for bookmark in looseBookmarks {
+        let savedLooseFiles = UserDefaults.standard.array(forKey: Self.looseFilesKey) as? [Data] ?? []
+        for bookmark in savedLooseFiles {
             guard let url = resolveBookmark(bookmark),
-                  FileManager.default.fileExists(atPath: url.path),
-                  // A file that now sits inside an added folder belongs there.
-                  !sources.contains(where: {
-                      $0.kind == .localFolder && $0.documentID(for: url) != nil
-                  })
+                  FileManager.default.fileExists(atPath: url.path)
+            else {
+                let path = URL.resourceValues(forKeys: [.pathKey], fromBookmarkData: bookmark)?.path
+                if let path, Self.isOnUnmountedVolume(URL(fileURLWithPath: path)) {
+                    unavailableLooseBookmarks.append(bookmark)
+                }
+                continue
+            }
+            // A file that now sits inside an added folder belongs there.
+            guard !sources.contains(where: { $0.kind == .localFolder && $0.documentID(for: url) != nil })
             else { continue }
             looseFiles.append(url)
+            looseBookmarks[url.standardizedFileURL] = bookmark
         }
         if !looseFiles.isEmpty { ensureLooseFilesSource() }
         // A stale bookmark still resolves, but macOS asks for it to be made
