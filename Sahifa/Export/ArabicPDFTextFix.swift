@@ -79,12 +79,14 @@ enum ArabicPDFTextFix {
                       let hi = Int(b.substring(with: m.range(at: 2)), radix: 16) else { continue }
                 let dst = b.substring(with: m.range(at: 3))
                 let du = hexToBytes(dst)
-                guard du.count >= 2 else { continue }
+                guard du.count >= 2, hi >= lo else { continue }
+                // Codes are written back at the width they came in.
+                let width = max(2, m.range(at: 1).length)
                 for k in 0...(hi - lo) {
                     var d = du
                     let base = (Int(d[d.count-2]) << 8 | Int(d[d.count-1])) + k
                     d[d.count-2] = UInt8((base >> 8) & 0xFF); d[d.count-1] = UInt8(base & 0xFF)
-                    entries.append((String(format: "%02X", lo + k), normHex(bytesToHex(d))))
+                    entries.append((String(format: "%0\(width)X", lo + k), normHex(bytesToHex(d))))
                     _ = du
                 }
             }

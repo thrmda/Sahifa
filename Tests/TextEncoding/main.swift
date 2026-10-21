@@ -71,6 +71,8 @@ func codec() {
     check("UTF-16 BE behind a BOM decodes",
           big?.text == "\u{0644}" && big?.encoding == .utf16BigEndian)
     check("an empty file is UTF-8", TextEncoding.decode(Data())?.encoding == .utf8)
+    check("UTF-16 without a byte-order mark is not taken for UTF-8",
+          TextEncoding.decode(Data([0x61, 0x00, 0x62, 0x00])) == nil)
     check("a second U+FEFF after the BOM is text, and kept",
           TextEncoding.decode(Data(bom + bom + [0x61]))?.text == "\u{FEFF}a")
     check("a real U+FFFD in valid UTF-8 isn't mistaken for damage",

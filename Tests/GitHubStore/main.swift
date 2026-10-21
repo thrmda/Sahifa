@@ -68,6 +68,28 @@ check("429 is a rate limit",
 check("a plain 403 on a write is read-only",
       describe(GitHubStore.error(for: response(403), body: body("Resource not accessible"), writing: true))
         == describe(RemoteStoreError.readOnly))
+check("a plain 403 on a read refuses this repository, not the account",
+      describe(GitHubStore.error(for: response(403), body: body("Resource not accessible by personal access token"), writing: false))
+        == describe(RemoteStoreError.forbidden))
+check("a refusal and a partial listing both have something to say",
+      !(RemoteStoreError.forbidden.errorDescription ?? "").isEmpty
+        && !(RemoteStoreError.partialListing([]).errorDescription ?? "").isEmpty)
+
+// A renamed repository answers 301; URLSession follows it without the token.
+do {
+    var original = URLRequest(url: URL(string: "https://api.github.com/repos/old/name/contents/a.md")!)
+    original.setValue("Bearer secret", forHTTPHeaderField: "Authorization")
+    let onGitHub = URLRequest(url: URL(string: "https://api.github.com/repositories/42/contents/a.md")!)
+    check("a redirect within GitHub's API keeps the token",
+          GitHubStore.Redirects.redirected(onGitHub, from: original).value(forHTTPHeaderField: "Authorization") == "Bearer secret")
+    let elsewhere = URLRequest(url: URL(string: "https://example.com/a.md")!)
+    check("…and a redirect anywhere else does not get it",
+          GitHubStore.Redirects.redirected(elsewhere, from: original).value(forHTTPHeaderField: "Authorization") == nil)
+    check("GitHub requests use a session that keeps nothing on disk",
+          GitHubStore.session.configuration.urlCache == nil
+            && GitHubStore.session.configuration.httpCookieStorage?.cookies?.isEmpty != false)
+}
+
 check("a 409 on a read is not a conflict",
       describe(GitHubStore.error(for: response(409), body: body("Git Repository is empty."), writing: false))
         == describe(RemoteStoreError.server(status: 409)))

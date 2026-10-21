@@ -37,11 +37,19 @@ DIST="$ROOT/dist"
 APP="$DERIVED/Build/Products/Release/$APP_NAME.app"
 
 VERSION="$(/usr/bin/awk -F' = ' '/MARKETING_VERSION/ {gsub(/;/,"",$2); print $2; exit}' "$PROJECT/project.pbxproj")"
+if [[ -z "$VERSION" ]]; then
+  echo "Could not read MARKETING_VERSION from $PROJECT/project.pbxproj" >&2
+  exit 1
+fi
 DMG="$DIST/$APP_NAME-$VERSION.dmg"
 
 echo "▸ Sahifa $VERSION — release build"
-rm -rf "$BUILD_DIR" "$DIST"
+rm -rf "$BUILD_DIR"
 mkdir -p "$DIST"
+# A DMG that failed partway (notarization refused, say) must not be left
+# looking like a release.
+finished=0
+trap '[[ $finished -eq 1 ]] || rm -f "$DMG"' EXIT
 
 # ── Build (universal: Apple Silicon + Intel) ──────────────────────────────────
 BUILD_ARGS=(
@@ -89,7 +97,7 @@ fi
 echo "▸ Building DMG…"
 STAGE="$BUILD_DIR/dmg"
 mkdir -p "$STAGE"
-cp -R "$APP" "$STAGE/"
+ditto "$APP" "$STAGE/$APP_NAME.app"
 ln -s /Applications "$STAGE/Applications"
 hdiutil create -volname "$APP_NAME" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
 
@@ -103,6 +111,7 @@ if [[ -n "${DEV_ID:-}" ]]; then
   fi
 fi
 
+finished=1
 echo ""
 echo "✓ Done: $DMG"
 if [[ -n "${DEV_ID:-}" && -n "$NOTARY_ARGS" ]]; then

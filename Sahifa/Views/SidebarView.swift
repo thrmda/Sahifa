@@ -389,6 +389,7 @@ private struct NodeLabel: View {
                 // Inline, like Finder and Xcode — a sheet to rename one file
                 // is heavier than the action deserves.
                 TextField("", text: $windowState.renameText)
+                    .accessibilityLabel(Text("New name"))
                     .textFieldStyle(.plain)
                     .font(Typography.body)
                     .focused($renameFieldFocused)

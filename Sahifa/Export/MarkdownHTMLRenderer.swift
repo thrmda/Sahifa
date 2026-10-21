@@ -118,6 +118,14 @@ enum MarkdownHTMLRenderer {
     /// outside the app as much as inside it. Browsers ignore whitespace and
     /// control characters inside a scheme ("java\tscript:"), so the check
     /// does too.
+    /// Raw HTML in a document goes through as written, except `<meta>`: a
+    /// `http-equiv="refresh"` sends whoever opens the exported file to any
+    /// address, and no Content Security Policy directive stops it.
+    static func withoutMeta(_ html: String) -> String {
+        html.replacingOccurrences(of: #"<meta\b[^>]*>"#, with: "",
+                                  options: [.regularExpression, .caseInsensitive])
+    }
+
     static func safeURL(_ raw: String, isImage: Bool = false) -> String {
         let scheme = String(raw.lowercased().unicodeScalars.filter {
             !CharacterSet.whitespacesAndNewlines.contains($0) && !CharacterSet.controlCharacters.contains($0)
@@ -379,7 +387,7 @@ private struct HTMLVisitor: MarkupVisitor {
     }
 
     mutating func visitHTMLBlock(_ html: HTMLBlock) -> String {
-        html.rawHTML
+        MarkdownHTMLRenderer.withoutMeta(html.rawHTML)
     }
 
     // MARK: Tables (GFM)
@@ -446,7 +454,7 @@ private struct HTMLVisitor: MarkupVisitor {
     }
 
     mutating func visitInlineHTML(_ html: InlineHTML) -> String {
-        html.rawHTML
+        MarkdownHTMLRenderer.withoutMeta(html.rawHTML)
     }
 
     mutating func visitSoftBreak(_ softBreak: SoftBreak) -> String {

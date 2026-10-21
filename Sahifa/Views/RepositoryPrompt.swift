@@ -22,7 +22,7 @@ enum RepositoryPrompt {
             alert.addButton(withTitle: String(localized: "Cancel"))
 
             let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
-            field.placeholderString = "owner/repository"
+            field.placeholderString = String(localized: "owner/repository")
             field.stringValue = entry
             alert.accessoryView = field
             alert.window.initialFirstResponder = field

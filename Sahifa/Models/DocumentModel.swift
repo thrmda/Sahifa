@@ -132,7 +132,10 @@ final class DocumentModel: ObservableObject, Identifiable {
 
         cancellable = $text
             .dropFirst()
-            .debounce(for: .seconds(1), scheduler: RunLoop.main)
+            // Not RunLoop.main: that timer waits out any menu, drag or modal
+            // panel, so an edit could sit unsaved for as long as a menu was
+            // held open.
+            .debounce(for: .seconds(1), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.saveNow()
             }
@@ -188,8 +191,13 @@ final class DocumentModel: ObservableObject, Identifiable {
     /// Quitting and switching documents both go through this.
     func flush() async {
         await settleSaves()
-        guard canSave else { return }
-        await write()
+        // A landing can start another save for text typed meanwhile; quitting
+        // right after the first would call that follow-up "couldn't be saved".
+        while canSave {
+            await write()
+            await settleSaves()
+            guard saveStatus == .idle, !hasConflict else { return }
+        }
     }
 
     /// Waits until no save is in flight. One landing can start another for
@@ -331,6 +339,13 @@ final class DocumentModel: ObservableObject, Identifiable {
 
     private func write() async {
         guard !isDetached else { return }
+        // Only one write at a time, whichever path asked for it: a retry and
+        // an autosave landing in the same run-loop pass both quoted the same
+        // version, and the second came back as a conflict with the first.
+        guard !isSaving else {
+            saveRequestedWhileSaving = true
+            return
+        }
         // A fresh attempt supersedes any scheduled retry.
         retryTask?.cancel()
         retryTask = nil
@@ -340,9 +355,11 @@ final class DocumentModel: ObservableObject, Identifiable {
         do {
             version = try await store.write(attempted, to: id, expecting: version,
                                             encoding: encoding)
-            // Compare against what was actually sent: more may have been typed
-            // while the request was in flight, and that is still unsaved.
-            if text == attempted { savedText = attempted }
+            // What the store holds now. More may have been typed while the
+            // request was out; that still differs from this and stays unsaved.
+            // Keeping the older baseline instead meant deleting what was typed
+            // in flight read as "nothing to save" while the file held more.
+            savedText = attempted
             hasConflict = false
             lastError = nil
             saveStatus = .idle

@@ -188,6 +188,50 @@ func main() async {
           "conflict \(await MainActor.run { doc6.hasConflict }), stored \(store6.text)")
     check("…and the last text is what's stored", store6.text == "first second", store6.text)
 
+    // Typing back to the old text while a save is out: the baseline has to
+    // become what the store now holds, or the document reads clean while the
+    // file differs and a quit drops the difference.
+    let store7 = FlakyStore()
+    store7.writeNanos = 600_000_000
+    let doc7 = await MainActor.run { DocumentModel(id: id, store: store7) }
+    await MainActor.run {
+        doc7.text = "start A"
+        doc7.saveNow()
+    }
+    try? await Task.sleep(nanoseconds: 100_000_000)
+    await MainActor.run { doc7.text = "start" }
+    try? await Task.sleep(nanoseconds: 800_000_000)
+    check("the in-flight text landed", store7.text == "start A", store7.text)
+    check("reverting to the old text during a save still counts as unsaved",
+          await MainActor.run { doc7.hasUnsavedChanges })
+    await doc7.flush()
+    check("…and flush writes it", store7.text == "start", store7.text)
+
+    // Two paths asking for a save in the same pass (the autosave timer and a
+    // retry on reactivation) must not run two writes side by side: the
+    // second quoted the first's version and came back as a conflict.
+    let store8 = FlakyStore()
+    store8.failWrites = true
+    let doc8 = await MainActor.run { DocumentModel(id: id, store: store8) }
+    await MainActor.run {
+        doc8.text = "retry me"
+        doc8.saveNow()
+    }
+    try? await Task.sleep(nanoseconds: 200_000_000)
+    check("the write failed into retrying", await MainActor.run { doc8.saveStatus == .retrying })
+    let before = store8.writeAttempts
+    store8.failWrites = false
+    store8.writeNanos = 300_000_000
+    await MainActor.run {
+        doc8.saveNow()
+        doc8.retrySave()
+    }
+    try? await Task.sleep(nanoseconds: 1_000_000_000)
+    check("a save and a retry in one pass make one write, not two",
+          store8.writeAttempts == before + 1, "\(store8.writeAttempts - before) writes")
+    check("…and it lands without a conflict",
+          await MainActor.run { !doc8.hasConflict && !doc8.hasUnsavedChanges } && store8.text == "retry me")
+
     // A credential arriving while a save is held: swapping the store lets the
     // held edit through without waiting for a keystroke.
     let readOnly = FlakyStore()

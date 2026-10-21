@@ -83,6 +83,8 @@ final class MarkdownStyler {
     /// typed newline unstyled.
     private var pendingEdit: NSRange?
     private var pendingDelta = 0
+    /// Whether the storage has changed since the last restyle.
+    var hasPendingEdit: Bool { pendingEdit != nil }
     private var editObserver: NSObjectProtocol?
 
     deinit {
@@ -135,6 +137,7 @@ final class MarkdownStyler {
         }
         pendingEdit = nil
         pendingDelta = 0
+        lastRestyledLength = storage.length
         applyDiff(in: [NSRange(location: 0, length: storage.length)], to: storage)
     }
 
@@ -165,6 +168,7 @@ final class MarkdownStyler {
                   let dirty = patchBase(cachedBase, from: cachedText, to: text, edit: edit)
             else { return restyle(storage) }
             regions.append(dirty)
+            lastRestyledLength = dirty.length
             oldFocus = oldFocus.map { Self.map($0, through: edit) }
         } else if !text.isEqual(to: cachedText) {
             // Changed without our seeing it.
@@ -183,6 +187,18 @@ final class MarkdownStyler {
     /// How many times the whole document has been styled from scratch. For
     /// tests: typing should leave it alone.
     private(set) var fullRebuilds = 0
+    /// How much of the document the last restyle went over. For tests.
+    private(set) var lastRestyledLength = 0
+
+    /// A link reference definition, at the start of a line. Any "]:" used to
+    /// count, so `arr[i]:` in a code block put every keystroke on the slow
+    /// path.
+    private static let referenceDefinition = try! NSRegularExpression(
+        pattern: #"(?m)^ {0,3}\[[^\]\r\n]+\]:"#)
+
+    static func hasReferenceDefinition(_ text: NSString) -> Bool {
+        referenceDefinition.firstMatch(in: text as String, range: NSRange(location: 0, length: text.length)) != nil
+    }
 
     /// Builds the styled document and its top-level blocks from scratch.
     private func buildStyled(for text: String) -> (NSMutableAttributedString, [Block]) {
@@ -263,7 +279,8 @@ final class MarkdownStyler {
         // wherever that is.
         if parsesMarkdown {
             let oldDirty = NSRange(location: dirty.location, length: dirty.length - delta)
-            if new.substring(with: dirty).contains("]:") || old.substring(with: oldDirty).contains("]:") {
+            if Self.hasReferenceDefinition(new.substring(with: dirty) as NSString)
+                || Self.hasReferenceDefinition(old.substring(with: oldDirty) as NSString) {
                 return nil
             }
         }
@@ -310,8 +327,17 @@ final class MarkdownStyler {
         // positions can be off by a character around CR line endings, so a
         // block can keep its range and kind and still parse differently
         // when its neighbour changes.
-        let start = first > 1 ? NSMaxRange(blocks[first - 2].range) : 0
-        let end = lastNew + 2 < blocks.count ? blocks[lastNew + 2].range.location : new.length
+        var start = first > 1 ? NSMaxRange(blocks[first - 2].range) : 0
+        var end = lastNew + 2 < blocks.count ? blocks[lastNew + 2].range.location : new.length
+        if blocks.isEmpty {
+            // No blocks at all (a CSV, whose text is shown plain): only the
+            // paragraphs around the edit. "Everything between the unchanged
+            // blocks" was the whole file, on every keystroke.
+            // Through the paragraph the edit ends in: a line break typed
+            // mid-paragraph makes a new one after it, with its own direction.
+            start = edit.range.location
+            end = NSMaxRange(new.paragraphRange(for: NSRange(location: editEnd, length: 0)))
+        }
         var dirty = NSRange(location: min(start, edit.range.location),
                             length: max(end, editEnd) - min(start, edit.range.location))
 
@@ -387,7 +413,7 @@ final class MarkdownStyler {
 
         // A link reference definition counts wherever it is, so a window
         // that left it out would parse its links differently.
-        guard new.range(of: "]:").location == NSNotFound else {
+        guard !Self.hasReferenceDefinition(new) else {
             return (parse(NSRange(location: 0, length: new.length)), true)
         }
 
@@ -554,6 +580,12 @@ final class MarkdownStyler {
 struct SourceMap {
     private let lines: [Substring]
     private let lineStartUTF16: [Int]
+    /// UTF-16 offset for each UTF-8 offset of a line that isn't plain ASCII,
+    /// made the first time the line is asked about. Walking the line's
+    /// prefix for every node made one long Arabic paragraph quadratic: nine
+    /// seconds a keystroke at 90 KB.
+    private final class Tables { var byLine: [Int: [Int]] = [:] }
+    private let tables = Tables()
 
     /// Lines end where cmark ends them: at LF, CRLF or a lone CR. Splitting
     /// on the Character "\n" missed CRLF entirely (Swift treats "\r\n" as
@@ -598,13 +630,24 @@ struct SourceMap {
         guard line >= 1, line <= lines.count else { return nil }
         let content = lines[line - 1]
         let start = lineStartUTF16[line - 1]
-        let utf8 = content.utf8
-        guard column >= 1,
-              let index = utf8.index(utf8.startIndex, offsetBy: column - 1, limitedBy: utf8.endIndex)
-        else {
-            return start + content.utf16.count
+        let utf8Count = content.utf8.count
+        let utf16Count = content.utf16.count
+        let offset = max(0, column - 1)
+        guard offset < utf8Count else { return start + utf16Count }
+        // All ASCII: a byte is a unit.
+        if utf8Count == utf16Count { return start + offset }
+        if let table = tables.byLine[line] { return start + table[offset] }
+        var table = [Int](repeating: 0, count: utf8Count + 1)
+        var utf8Offset = 0, utf16Offset = 0
+        for scalar in content.unicodeScalars {
+            let width = scalar.utf8.count
+            for i in 0..<width { table[utf8Offset + i] = utf16Offset }
+            utf8Offset += width
+            utf16Offset += scalar.utf16.count
         }
-        return start + content[..<index].utf16.count
+        table[utf8Count] = utf16Offset
+        tables.byLine[line] = table
+        return start + table[offset]
     }
 
     func nsRange(_ range: SourceRange) -> NSRange? {
@@ -845,8 +888,8 @@ private struct StyleWalker: MarkupWalker {
         let ch = text[index]
         if ch == "-" || ch == "*" || ch == "+" {
             utf16Length += 1
-        } else if ch.isNumber {
-            while index < text.endIndex, text[index].isNumber {
+        } else if ch.isASCII, ch.isNumber {
+            while index < text.endIndex, text[index].isASCII, text[index].isNumber {
                 utf16Length += 1
                 index = text.index(after: index)
             }

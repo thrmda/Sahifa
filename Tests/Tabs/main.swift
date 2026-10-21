@@ -22,6 +22,7 @@ func write(_ relative: String, _ text: String = "# x\n") {
     try! text.write(to: root.appendingPathComponent(relative), atomically: true, encoding: .utf8)
 }
 write("a.md"); write("b.md"); write("c.md")
+let other = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(stamp + "-other")
 
 @MainActor
 func run() async {
@@ -205,6 +206,59 @@ func run() async {
               detached.selection == id("b.md"), "\(String(describing: detached.selection))")
         check("…with a tab for it", detached.openTabs.contains(id("b.md")), "\(detached.openTabs)")
     }
+
+    // A folder that goes away (unplugged, renamed in Finder) is not a folder
+    // whose files were deleted: its tabs stay, edits and all, until it is
+    // back. They used to close, leaving the edits in a model nothing showed.
+    do {
+        let w = WindowState(); w.attach(model)
+        w.selection = nil; w.openTabs = []
+        w.showInCurrentTab(id("b.md"))
+        guard let doc = w.document else { check("open b.md", false); return }
+        doc.text = "# typed before the folder went away\n"
+        let away = URL(fileURLWithPath: root.path + "-away")
+        try? fm.moveItem(at: root, to: away)
+        model.refreshLoadedDirectories()
+        // What a file-system event for the vanished folder does, and what one
+        // for any other folder does (every window re-checks its selection).
+        model.loadChildren(of: id(""), force: true)
+        try? fm.createDirectory(at: other, withIntermediateDirectories: true)
+        model.openExternal([other])
+        check("a folder that can't be read is marked missing",
+              model.sources.first { $0.id == source.id }?.status == .missing)
+        check("…its tab stays open", w.openTabs == [id("b.md")] && w.document === doc, "\(w.openTabs)")
+        check("…and its listing is kept", model.children(of: id(""))?.isEmpty == false)
+        try? fm.moveItem(at: away, to: root)
+        model.refreshLoadedDirectories()
+        check("back again, the folder is ready", model.sources.first { $0.id == source.id }?.status == .ready)
+        await doc.flush()
+        let onDisk = try? String(contentsOf: root.appendingPathComponent("b.md"), encoding: .utf8)
+        check("…and the edits typed meanwhile reach it",
+              onDisk == "# typed before the folder went away\n", onDisk ?? "nil")
+    }
+
+    // Removing a source closes its tabs, saves its documents and lets them go:
+    // they used to keep autosaving unseen, and adding the folder back made a
+    // second document for the same file.
+    do {
+        let w = WindowState(); w.attach(model)
+        w.selection = nil; w.openTabs = []
+        w.showInCurrentTab(id("c.md"))
+        guard let doc = w.document else { check("open c.md", false); return }
+        doc.text = "# edited just before removal\n"
+        model.removeSource(source.id)
+        check("removing a source closes its tabs", w.openTabs.isEmpty, "\(w.openTabs)")
+        try? await Task.sleep(nanoseconds: 500_000_000)
+        let onDisk = try? String(contentsOf: root.appendingPathComponent("c.md"), encoding: .utf8)
+        check("…after saving its edits", onDisk == "# edited just before removal\n", onDisk ?? "nil")
+        model.openExternal([root])
+        guard let again = model.sources.first(where: { $0.rootURL?.standardizedFileURL == root.standardizedFileURL }) else {
+            check("folder added again", false); return
+        }
+        let fresh = model.document(for: DocumentID(sourceID: again.id, path: "c.md"))
+        check("adding the folder back gives one fresh document, holding the saved text",
+              fresh != nil && fresh !== doc && fresh?.text == "# edited just before removal\n")
+    }
 }
 
 await run()
@@ -217,6 +271,7 @@ if let trash, let entries = try? fm.contentsOfDirectory(atPath: trash.path) {
     }
 }
 try? fm.removeItem(at: root)
+try? fm.removeItem(at: other)
 
 print(failures == 0 ? "\nALL PASS" : "\n\(failures) FAILURE(S)")
 exit(failures == 0 ? 0 : 1)

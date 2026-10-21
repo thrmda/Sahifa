@@ -89,12 +89,24 @@ final class GitHubAccount: ObservableObject {
     func connect(token: String) async {
         let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        // A mistyped token pasted while signed in used to leave the account
+        // "failed" with the good token still in the Keychain: every
+        // repository read-only until relaunch, when it came back connected.
+        // The working credential stays; the failure is reported beside it.
+        let previous = state
+        let attempt = connectAttempt + 1
+        connectAttempt = attempt
+        connectError = nil
         state = .connecting
         do {
             let (login, expires) = try await Self.verify(token: trimmed)
+            // Disconnected (or connected again) while this was out.
+            guard attempt == connectAttempt else { return }
             guard Keychain.set(trimmed, for: keychainAccount) else {
-                state = .failed(String(localized:
-                    "The token couldn't be saved to your Keychain, so it wasn't kept."))
+                let reason = String(localized:
+                    "The token couldn't be saved to your Keychain, so it wasn't kept.")
+                connectError = reason
+                state = Self.keeps(previous) ? previous : .failed(reason)
                 return
             }
             storedToken = trimmed
@@ -107,11 +119,27 @@ final class GitHubAccount: ObservableObject {
             expiry = expires
             state = .connected(login: login)
         } catch {
-            state = .failed(error.localizedDescription)
+            guard attempt == connectAttempt else { return }
+            connectError = error.localizedDescription
+            state = Self.keeps(previous) ? previous : .failed(error.localizedDescription)
         }
     }
 
+    /// Whether a failed attempt should leave the account as it was: a
+    /// credential that still works is worth more than news about one that
+    /// doesn't.
+    private static func keeps(_ state: State) -> Bool {
+        if case .connected = state { return true }
+        return false
+    }
+
+    /// Why the last connect attempt failed, when the account stayed as it was.
+    @Published private(set) var connectError: String?
+    private var connectAttempt = 0
+
     func disconnect() {
+        connectAttempt += 1
+        connectError = nil
         Keychain.remove(keychainAccount)
         storedToken = nil
         UserDefaults.standard.removeObject(forKey: loginKey)
@@ -137,7 +165,7 @@ final class GitHubAccount: ObservableObject {
         request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
         request.timeoutInterval = 30
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await GitHubStore.session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw RemoteStoreError.server(status: 0)
         }

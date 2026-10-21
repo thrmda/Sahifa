@@ -56,7 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static func confirmQuitWithUnsaved(_ documents: [DocumentModel]) -> Bool {
         let alert = NSAlert()
         alert.alertStyle = .warning
-        let names = documents.map(\.displayName).joined(separator: ", ")
+        let names = ListFormatter.localizedString(byJoining: documents.map(\.displayName))
         alert.messageText = documents.count == 1
             ? String(localized: "“\(names)” has unsaved changes that couldn't be saved.")
             : String(localized: "\(documents.count) documents have unsaved changes that couldn't be saved.")
@@ -238,6 +238,9 @@ struct SahifaCommands: Commands {
                 Text("Dual View").tag(ViewMode.split)
                 Text("View Only").tag(ViewMode.previewOnly)
             }
+            // The menu is the label; an inline picker otherwise adds a
+            // greyed "View" header of its own above the three.
+            .labelsHidden()
             .pickerStyle(.inline)
             .disabled(windowState == nil)
             Button("Cycle View") {
@@ -339,7 +342,7 @@ private func send(_ selector: Selector) {
 private func recentLabel(_ item: AppModel.RecentItem,
                          among items: [AppModel.RecentItem]) -> String {
     guard items.filter({ $0.name == item.name }).count > 1 else { return item.name }
-    return "\(item.name) - \(item.parentName)"
+    return String(localized: "\(item.name) - \(item.parentName)")
 }
 
 extension View {

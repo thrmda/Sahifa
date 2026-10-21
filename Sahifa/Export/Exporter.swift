@@ -125,7 +125,21 @@ private final class PDFCapture: NSObject, WKNavigationDelegate {
     func start(html: String) {
         expectingPageLoad = true
         pageNavigation = webView.loadHTMLString(html, baseURL: nil)
+        // A page that never finishes (a remote image on a server that
+        // accepts and stalls; a wedged web process) used to leave the capture
+        // waiting forever, with no file and no word.
+        let timeout = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.completion(self, NSError(
+                domain: "Sahifa.Export", code: 3,
+                userInfo: [NSLocalizedDescriptionKey: String(localized: "The document took too long to lay out.")]))
+        }
+        self.timeout = timeout
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.timeLimit, execute: timeout)
     }
+
+    static let timeLimit: TimeInterval = 120
+    private var timeout: DispatchWorkItem?
 
     /// Reports once, whatever fires: a capture can fail in several places,
     /// and the export (or the `-exportPDF` run waiting to quit) needs exactly
@@ -133,6 +147,7 @@ private final class PDFCapture: NSObject, WKNavigationDelegate {
     private func completion(_ capture: PDFCapture, _ error: Error?) {
         guard !finished else { return }
         finished = true
+        timeout?.cancel()
         report(capture, error)
     }
 

@@ -75,18 +75,13 @@ extension BidiTextView {
     }
 
     @objc func sahifaInsertHorizontalRule(_ sender: Any?) {
-        let sel = selectedRange()
-        let text = "\n\n---\n\n"
-        replace(sel, with: text,
-                selecting: NSRange(location: sel.location + (text as NSString).length, length: 0))
+        insertBlock("---", replacing: selectedRange())
     }
 
     @objc func sahifaInsertTable(_ sender: Any?) {
-        let sel = selectedRange()
-        let table = "\n\n| Column | Column |\n| --- | --- |\n|  |  |\n\n"
         // Land with the first "Column" selected, ready to type over.
-        replace(sel, with: table,
-                selecting: NSRange(location: sel.location + 4, length: 6))
+        insertBlock("| Column | Column |\n| --- | --- |\n|  |  |", replacing: selectedRange(),
+                    selecting: NSRange(location: 2, length: 6))
     }
 
     // MARK: Tables from and to delimited text
@@ -179,7 +174,8 @@ extension BidiTextView {
 
     /// Replaces `range` with a block, adding only the line breaks needed to
     /// set it apart by a blank line, and leaves the caret just after it.
-    private func insertBlock(_ block: String, replacing range: NSRange) {
+    /// `selecting` is within the block; the caret lands after it otherwise.
+    private func insertBlock(_ block: String, replacing range: NSRange, selecting: NSRange? = nil) {
         let ns = string as NSString
         // In the document's own line endings, so a CRLF file doesn't come out
         // with a mix.
@@ -192,8 +188,10 @@ extension BidiTextView {
         // The end of the document only needs the line to end.
         let suffix = String(repeating: lineBreak, count: max(0, (atEnd ? 1 : 2) - after))
         let body = block.replacingOccurrences(of: "\n", with: lineBreak)
-        let caret = range.location + ((prefix + body) as NSString).length
-        replace(range, with: prefix + body + suffix, selecting: NSRange(location: caret, length: 0))
+        let bodyStart = range.location + (prefix as NSString).length
+        let selection = selecting.map { NSRange(location: bodyStart + $0.location, length: $0.length) }
+            ?? NSRange(location: bodyStart + (body as NSString).length, length: 0)
+        replace(range, with: prefix + body + suffix, selecting: selection)
     }
 
     /// Line breaks directly before `end`, up to two. CRLF counts once.
@@ -326,6 +324,12 @@ extension BidiTextView {
 
             var hashes = 0
             var index = line.startIndex
+            // Up to three spaces of indentation still make a heading.
+            var indent = 0
+            while index < line.endIndex, line[index] == " ", indent < 3 {
+                indent += 1
+                index = line.index(after: index)
+            }
             while index < line.endIndex, line[index] == "#", hashes < 6 {
                 hashes += 1
                 index = line.index(after: index)
@@ -473,7 +477,9 @@ extension BidiTextView {
             return length
         case .numbered:
             var digits = 0
-            while index < line.endIndex, line[index].isNumber {
+            // ASCII only: cmark takes "١." as prose, so it must be added
+            // to, not stripped as a list marker already there.
+            while index < line.endIndex, line[index].isASCII, line[index].isNumber {
                 digits += 1
                 length += String(line[index]).utf16.count
                 index = line.index(after: index)

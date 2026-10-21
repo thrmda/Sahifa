@@ -105,6 +105,11 @@ enum TextEncoding: Hashable, Sendable {
     /// Decoding replaces anything invalid with U+FFFD, so the bytes were valid
     /// exactly when re-encoding the result gives them back.
     private static func utf8(_ bytes: ArraySlice<UInt8>) -> String? {
+        // NUL is valid UTF-8, so a UTF-16 file without a byte-order mark that
+        // holds only ASCII ("a\0b\0") passed as UTF-8 and was edited with
+        // invisible NULs between the letters. No text file Sahifa opens has
+        // reason to contain one.
+        guard !bytes.contains(0) else { return nil }
         let text = String(decoding: bytes, as: UTF8.self)
         return text.utf8.elementsEqual(bytes) ? text : nil
     }
@@ -230,10 +235,17 @@ struct LocalFileStore: DocumentStore {
     /// Folders and the files Sahifa opens in one directory, folders first, each group
     /// ordered the way Finder orders names.
     func childrenImmediately(of id: DocumentID) -> [Node] {
-        let contents = (try? FileManager.default.contentsOfDirectory(
+        childrenIfReadable(of: id) ?? []
+    }
+
+    /// nil when the folder can't be read at all (gone, unmounted, forbidden),
+    /// as opposed to holding nothing. Treating the two alike emptied the
+    /// sidebar of a folder whose drive was unplugged and closed its tabs.
+    func childrenIfReadable(of id: DocumentID) -> [Node]? {
+        guard let contents = try? FileManager.default.contentsOfDirectory(
             at: url(for: id),
             includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles])) ?? []
+            options: [.skipsHiddenFiles]) else { return nil }
         var nodes: [Node] = []
         for url in contents {
             let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?

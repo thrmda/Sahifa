@@ -14,12 +14,14 @@ import Foundation
 @MainActor
 final class DirectoryWatcher {
     /// Directories whose contents changed.
-    private let onChange: ([URL]) -> Void
+    /// The folders that changed, and whether the kernel dropped events on
+    /// the way (then everything under those folders may have changed too).
+    private let onChange: ([URL], Bool) -> Void
     /// The root itself was deleted, renamed, or unmounted.
     private let onRootLost: () -> Void
     private var stream: FSEventStreamRef?
 
-    init?(root: URL, onChange: @escaping ([URL]) -> Void, onRootLost: @escaping () -> Void) {
+    init?(root: URL, onChange: @escaping ([URL], Bool) -> Void, onRootLost: @escaping () -> Void) {
         self.onChange = onChange
         self.onRootLost = onRootLost
 
@@ -41,11 +43,16 @@ final class DirectoryWatcher {
                 let changed = (list as? [String]) ?? []
                 var directories: [URL] = []
                 var rootLost = false
+                var dropped = false
+                let scan = UInt32(kFSEventStreamEventFlagMustScanSubDirs
+                                  | kFSEventStreamEventFlagKernelDropped
+                                  | kFSEventStreamEventFlagUserDropped)
                 for index in 0..<count {
                     let flag = flags[index]
                     if flag & UInt32(kFSEventStreamEventFlagRootChanged) != 0 {
                         rootLost = true
                     }
+                    if flag & scan != 0 { dropped = true }
                     if index < changed.count {
                         directories.append(URL(fileURLWithPath: changed[index]))
                     }
@@ -53,7 +60,7 @@ final class DirectoryWatcher {
                 // The stream was scheduled on the main queue below.
                 MainActor.assumeIsolated {
                     if rootLost { watcher.onRootLost() }
-                    if !directories.isEmpty { watcher.onChange(directories) }
+                    if !directories.isEmpty { watcher.onChange(directories, dropped) }
                 }
             },
             &context,

@@ -328,7 +328,7 @@
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "تصدير HTML…"
+            "value": "تصدير بصيغة HTML…"
           }
         }
       }
@@ -381,6 +381,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "عام"
+          }
+        }
+      }
+    },
+    "GitHub lists at most 1,000 items in a folder. The rest aren't shown.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "يعرض GitHub 1,000 عنصر على الأكثر في المجلد الواحد. البقية غير معروضة."
+          }
+        }
+      }
+    },
+    "GitHub refused access to this repository. Check the token's permissions or the organisation's settings.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "رفض GitHub الوصول إلى هذا المستودع. تحقق من صلاحيات الرمز أو إعدادات المؤسسة."
           }
         }
       }
@@ -451,16 +471,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "إخفاء شريط التنسيق"
-          }
-        }
-      }
-    },
-    "Hide Preview": {
-      "localizations": {
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "إخفاء المعاينة"
           }
         }
       }
@@ -542,7 +552,7 @@
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "تُطبَّق تغييرات اللغة بالكامل بعد إعادة تشغيل «صحيفة»."
+            "value": "تُطبَّق تغييرات اللغة بالكامل بعد إعادة تشغيل صحيفة."
           }
         }
       }
@@ -583,7 +593,7 @@
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "نقل إلى المهملات"
+            "value": "نقل إلى سلة المهملات"
           }
         }
       }
@@ -629,13 +639,23 @@
         }
       }
     },
+    "New name": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الاسم الجديد"
+          }
+        }
+      }
+    },
     "No file selected": {
       "extractionState": "manual",
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "لم يتم اختيار ملف"
+            "value": "لم يُختر أي ملف"
           }
         }
       }
@@ -695,27 +715,7 @@
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "فتح الأخيرة"
-          }
-        }
-      }
-    },
-    "Open a folder or Markdown file": {
-      "localizations": {
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "افتح مجلدًا أو ملف ماركداون"
-          }
-        }
-      }
-    },
-    "Open a folder or a Markdown file to begin.": {
-      "localizations": {
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "افتح مجلدًا أو ملف ماركداون للبدء."
+            "value": "فتح الأحدث"
           }
         }
       }
@@ -725,17 +725,7 @@
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "ملفات مفتوحة"
-          }
-        }
-      }
-    },
-    "Open…": {
-      "localizations": {
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "فتح…"
+            "value": "الملفات المفتوحة"
           }
         }
       }
@@ -766,16 +756,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "اقتباس"
-          }
-        }
-      }
-    },
-    "Read-only repository": {
-      "localizations": {
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "مستودع للقراءة فقط"
           }
         }
       }
@@ -891,16 +871,6 @@
         }
       }
     },
-    "Show Preview": {
-      "localizations": {
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "إظهار المعاينة"
-          }
-        }
-      }
-    },
     "Show Sidebar": {
       "localizations": {
         "ar": {
@@ -962,6 +932,16 @@
         }
       }
     },
+    "The token couldn't be saved to your Keychain, so it wasn't kept.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تعذّر حفظ الرمز في سلسلة المفاتيح، فلم يُحتفظ به."
+          }
+        }
+      }
+    },
     "The token is kept in your Mac's Keychain.": {
       "localizations": {
         "ar": {
@@ -1018,16 +998,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "هذا المجلد مفقود"
-          }
-        }
-      }
-    },
-    "This source is read-only.": {
-      "localizations": {
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "هذا المصدر للقراءة فقط."
           }
         }
       }
@@ -1338,12 +1308,32 @@
         }
       }
     },
+    "owner/repository": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "المالك/المستودع"
+          }
+        }
+      }
+    },
     "“%@” has unsaved changes that couldn't be saved.": {
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
             "value": "يحتوي «%@» على تغييرات تعذّر حفظها."
+          }
+        }
+      }
+    },
+    "%lld pt": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld نقطة"
           }
         }
       }
@@ -1448,6 +1438,16 @@
         }
       }
     },
+    "The document took too long to lay out.": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "استغرق تنسيق المستند وقتًا طويلًا جدًا."
+          }
+        }
+      }
+    },
     "The page stopped rendering before the PDF was finished.": {
       "localizations": {
         "ar": {
@@ -1518,6 +1518,16 @@
         }
       }
     },
+    "%@ - %@": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ - %2$@"
+          }
+        }
+      }
+    },
     "%@ no longer has access. Reconnect to keep saving.": {
       "localizations": {
         "ar": {
@@ -1553,7 +1563,7 @@
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "اختر ملف ماركداون من الشريط الجانبي، أو افتح ملفًا في علامة التبويب هذه."
+            "value": "اختر ملف Markdown من الشريط الجانبي، أو افتح ملفًا في علامة التبويب هذه."
           }
         }
       }
@@ -1564,6 +1574,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "للقراءة فقط. اربط حساب GitHub من الإعدادات لحفظ التغييرات."
+          }
+        }
+      }
+    },
+    "%@×": {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@×"
           }
         }
       }
